@@ -10,10 +10,10 @@ S3: "Usamos ese alcance, pero se podría añadir una flag para sí obtenerlos to
 S4: "Todo lo que vaya por flag se podría añadir también a un fichero de configuración"
 
 ## Tasks
-T0 [S4] Allow execution options out/snapshots/allChildren in strict JSON config, with explicitly supplied flags taking precedence including false; keep -config/-help as bootstrap flags and preserve previous flags; route: bounded worker first; commit: pending.
+T0 [S4] Allow execution options out/snapshots/allChildren in strict JSON config, with explicitly supplied flags taking precedence including false; keep -config/-help as bootstrap flags and preserve previous flags; route: bounded worker first; commit: 5812d6b (verified complete).
 T1 [S1-S2] Generate optional Apex-style child arrays from named visible childRelationships with safe imports and collision validation; route: bounded worker; commit: 6f9c4df (verified complete).
-T2 [S1-S4] Default child discovery to configured roots only, preserving automatic transitive parent discovery; add -all-children for recursive child discovery with dedup/cycles and accurate counts; route: same dependent worker; commit: pending.
-T3 [S1-S4] Verify fake-HTTPS graph, TypeScript arrays/cycles/imports, regressions, help/docs, risk assessment and commit verified work; route: parent checks plus independent verifier if security escalation applies; commit: pending.
+T2 [S1-S4] Default child discovery to configured roots only, preserving automatic transitive parent discovery; add -all-children for recursive child discovery with dedup/cycles and accurate counts; route: same dependent worker; commit: 5812d6b (verified complete with simulated HTTPS).
+T3 [S1-S4] Verify fake-HTTPS graph, TypeScript arrays/cycles/imports, regressions, help/docs, risk assessment and commit verified work; route: parent checks plus independent verifier; commits: 6f9c4df,5812d6b (complete).
 
 ## Log
 L7: Todo lo que vaya por flag se podría añadir también a un fichero de configuración
