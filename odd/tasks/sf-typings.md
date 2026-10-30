@@ -17,6 +17,13 @@ S10: "Utiliza sfType en ese caso"
 S11: "En el caso de un campo formula cómo se vería?" / "En el picklist no aparece createable y updateable"
 S12: "Impleméntalo"
 
+S13: "Hay muchísima información en cada campo, revisa y dame un ejemplo de lo más importante"
+S14: "defaultValue debería aparecer en el caso que exista"
+S15: "Y si es una fórmula, la propia fórmula"
+S16: "En el caso de un lookup, el referenceto"
+S17: "Procede"
+S18: "También el unique o el external id solo si están marcados"
+
 ## Tasks
 T1 [S1,S4] Implement sf-typings Go CLI config and Salesforce object Describe declaration generation with public tests; route: bounded worker then inline correction; commit: 4f9a9b7.
 T2 [S1-S3] Implement local .cls Apex @AuraEnabled method declaration generation using apexfmt/parser with public tests; route: bounded worker plus inline correction and independent structural verifier; commit: f9993e6.
@@ -26,6 +33,8 @@ T3 [S1-S5] Document independent CLI workflow and prove generated declarations ty
 T5 [S7] Generate deterministic object/field JSDoc from Describe metadata, including known picklist options and context limitations, without narrowing existing property types; route: bounded worker due context backstop; commit: f9869af (verified complete).
 
 T6 [S7-S12] Emit structured JSDoc tags (`@sfType`, other plain metadata tags) and restricted/unrestricted picklist unions, preserving optionality, nullability, multipicklist strings, formulas, and complete metadata; route: bounded worker due context backstop; commit: a1aa504 (verified complete).
+
+T7 [S13-S18] Replace exhaustive JSDoc with concise relevant metadata; retain defaults/formulas/lookups, unique/externalId only when true, and full JSON snapshots, preserve types and conditional description; route: bounded worker due context backstop; commit: pending.
 
 ## Log
 L1: Entonces creo que mejor sería cambiar de rumbo y optar por otro tipo de solución, podemos crear un cli en go que permita hacer un describe y obtener todos los datos de los objetos (con un fichero de configuración que permita filtrar qué objetos queremos obtener) o también generar .d.ts a partir de los métodos de apex, puesto que el tipado de sf solo incluye "any"
@@ -67,3 +76,11 @@ L37: En el caso de un campo formula cómo se vería?
 L38: En el picklist no aparece createable y updateable
 L39: Impleméntalo
 L40: T6 implements agreed plain metadata @tags with @sfType replacing semantic @type, repeated @picklistValue, complete formula/CRUD data, and safe @metadata fallback for colliding or unsafe keys. Restricted picklists use ordered deduplicated literal unions including inactive values, open picklists additionally allow (string & {}), nullable adds null, properties remain optional, multipicklists remain string. Worker observed focused RED/GREEN for tags/types and injection boundaries; no auth changes/dependencies/live requests. Parent isolated output .tmp/final-jsdoc/Account.d.ts passed real TypeScript consumer tests for restricted/open values, nullability, formulas, multipicklists and hostile literals; TS AST recognized expected CRUD/formula/custom tags without injected semantic tags. Native ASSESS medium, reviewDue=false, no independent verifier required. Full Go suite job-4 passed (`go test ./... -count=1`, 126.115s, exit 0). Focused tests, real TypeScript semantic/AST checks and Go build passed. No live request or token access performed. Risk: none for this requested metadata/type-generation change; auth and Apex behavior remain untouched.
+L41: Añade @description también / Si es que lo incluye el describe. Implemented only actual nonblank string description, without label/help fallback; original focused and full suite passed (116.239s) before concise work.
+L42: Hay muchísima información en cada campo, revisa y dame un ejemplo de lo más importante
+L43: defaultValue debería aparecer en el caso que exista
+L44: Y si es una fórmula, la propia fórmula
+L45: En el caso de un lookup, el referenceto
+L46: Procede
+L47: También el unique o el external id solo si están marcados
+L48: T7 uses concise object/field metadata, retains meaningful text/numeric limits, CRUD flags, actual descriptions/help, non-null defaults including false/0/empty string, nonblank default/calculated formulas, lookup targets and relationship name, and unique/externalId only true. Known ordinary picklist options remain in union types; comments retain only useful option differences/activity/defaults/dependencies and short remarks. Unknown/empty/null/irrelevant metadata omitted only from comments; complete JSON snapshots unchanged. Worker observed focused RED/GREEN and Go build passed; accidental empty placeholder file removed by parent after verifying it was empty. Parent regenerated real Account review declaration OFFLINE from saved JSON (152220 -> 19432 bytes), confirmed snapshot unchanged, and tsc validated it. TS AST checks confirmed defaults/formulas/lookups/true-only flags and no hostile metadata tags. Full `go test ./... -count=1` suite job-7 passed (119.173s, exit 0). Native ASSESS medium/reviewDue=false; no independent verifier required for this unit. Focused tests, CGO-free build, real tsc and TS AST checks passed; no failed/skipped/pending check for this metadata unit. Prior auth native review remains blocked separately. No auth or type-generation change, no live query. Risk: none for this requested documentation filtering; shared code used by unrelated commands was not changed.

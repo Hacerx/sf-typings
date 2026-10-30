@@ -60,12 +60,100 @@ func docValue(value any) string {
 	return encoded
 }
 
-// writeDescribeDocs documents the full raw metadata, not a fixed subset of the
-// Describe schema. Object fields belong on their properties, not the interface.
+// relevantDocMetadata selects editor-facing metadata without modifying the raw
+// Describe maps used by snapshots or type generation.
+func relevantDocMetadata(metadata map[string]any, object bool) map[string]any {
+	selected := make(map[string]any)
+	text := func(keys ...string) {
+		for _, key := range keys {
+			if value, ok := metadata[key].(string); ok && strings.TrimSpace(value) != "" {
+				selected[key] = value
+			}
+		}
+	}
+	flags := func(keys ...string) {
+		for _, key := range keys {
+			if value, ok := metadata[key].(bool); ok {
+				selected[key] = value
+			}
+		}
+	}
+	text("label", "description")
+	flags("createable", "updateable")
+	if object {
+		text("labelPlural")
+		flags("deletable", "queryable", "searchable")
+		return selected
+	}
+	text("type", "inlineHelpText", "defaultValueFormula", "calculatedFormula", "relationshipName")
+	if value, exists := metadata["defaultValue"]; exists && value != nil {
+		selected["defaultValue"] = value
+	}
+	for _, key := range []string{"unique", "externalId"} {
+		if metadata[key] == true {
+			selected[key] = true
+		}
+	}
+	switch metadata["type"] {
+	case "string", "textarea", "email", "phone", "url", "encryptedstring", "combobox":
+		if value, ok := metadata["length"].(json.Number); ok {
+			if length, err := value.Float64(); err == nil && length > 0 {
+				selected["length"] = value
+			}
+		}
+	case "int", "long", "double", "currency", "percent":
+		for _, key := range []string{"precision", "scale"} {
+			if value, ok := metadata[key].(json.Number); ok {
+				selected[key] = value
+			}
+		}
+	case "reference":
+		if values, ok := metadata["referenceTo"].([]any); ok && len(values) > 0 {
+			if len(values) == 1 {
+				selected["referenceTo"] = values[0]
+			} else {
+				selected["referenceTo"] = values
+			}
+		}
+	case "picklist", "multipicklist":
+		flags("restrictedPicklist")
+		text("controllerName")
+	}
+	return selected
+}
+
+// relevantPicklistEntry retains useful option differences, not redundant values
+// already visible in a literal union. Missing/unknown activity is never assumed true.
+func relevantPicklistEntry(entry any) map[string]any {
+	option, ok := entry.(map[string]any)
+	if !ok {
+		return nil
+	}
+	value, ok := option["value"].(string)
+	if !ok {
+		return nil
+	}
+	label, hasLabel := option["label"].(string)
+	active, knownActivity := option["active"].(bool)
+	validFor, _ := option["validFor"].(string)
+	if hasLabel && label == value && knownActivity && active && option["defaultValue"] != true && validFor == "" {
+		return nil
+	}
+	selected := map[string]any{"value": value}
+	for _, key := range []string{"label", "active", "defaultValue", "validFor"} {
+		if value, exists := option[key]; exists {
+			selected[key] = value
+		}
+	}
+	return selected
+}
+
+// writeDescribeDocs renders only relevant metadata; snapshots remain complete.
 func writeDescribeDocs(text *strings.Builder, indent string, metadata map[string]any, object bool) {
-	keys := make([]string, 0, len(metadata))
-	for key := range metadata {
-		if !object || key != "fields" {
+	selected := relevantDocMetadata(metadata, object)
+	keys := make([]string, 0, len(selected))
+	for key := range selected {
+		if key != "description" {
 			keys = append(keys, key)
 		}
 	}
@@ -74,16 +162,11 @@ func writeDescribeDocs(text *strings.Builder, indent string, metadata map[string
 	line := func(value string) {
 		fmt.Fprintln(text, indent+" * "+strings.ReplaceAll(value, "*/", `*\/`))
 	}
+	if value, ok := metadata["description"].(string); ok && strings.TrimSpace(value) != "" {
+		line("@description " + docValue(value))
+	}
 	for _, key := range keys {
-		value := metadata[key]
-		if !object && key == "picklistValues" {
-			if entries, ok := value.([]any); ok && len(entries) > 0 {
-				for _, entry := range entries {
-					line("@picklistValue " + docJSON(entry))
-				}
-				continue
-			}
-		}
+		value := selected[key]
 		tag := metadataTag(key)
 		if tag == "metadata" {
 			line("@metadata " + docJSON(key) + " " + docJSON(value))
@@ -92,14 +175,21 @@ func writeDescribeDocs(text *strings.Builder, indent string, metadata map[string
 		}
 	}
 	if !object && (metadata["type"] == "picklist" || metadata["type"] == "multipicklist") {
-		line("Describe options are not record-type filtered; availability may vary by record type.")
+		if entries, ok := metadata["picklistValues"].([]any); ok {
+			for _, entry := range entries {
+				if relevant := relevantPicklistEntry(entry); relevant != nil {
+					line("@picklistValue " + docJSON(relevant))
+				}
+			}
+		}
+		line("@remarks Describe options are not record-type filtered; availability may vary by record type.")
 		if restricted, ok := metadata["restrictedPicklist"].(bool); !ok || !restricted {
-			line("Unrestricted picklists may accept values not listed here. Restriction applies only when restrictedPicklist=true.")
+			line("@remarks Unrestricted picklists may accept values not listed here.")
 		}
 		if metadata["dependentPicklist"] == true || metadata["controllerName"] != nil && metadata["controllerName"] != "" {
-			line("Dependent picklists require controller/validFor filtering.")
+			line("@remarks Dependent picklists require controller/validFor filtering.")
 		}
-		line("Known options include inactive entries and do not guarantee runtime validity.")
+		line("@remarks Known options may include inactive entries and do not guarantee runtime validity.")
 	}
 	fmt.Fprintln(text, indent+" */")
 }
