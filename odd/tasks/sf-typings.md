@@ -17,7 +17,7 @@ T2 [S1-S3] Implement local .cls Apex @AuraEnabled method declaration generation 
 T4 [S1,S5-S6] Replace `sf sobject describe` with authenticated direct REST Describe using the sf-auth-decrypt-go library and `sf org auth show-access-token -o <alias> --no-prompt --json` as bounded token fallback; route: bounded worker plus independent security verifier; commits: ceeb90d (core REST), f54fb67 (dedicated token), 6037d3e (401 retry); completion pending native review/live proof.
 T3 [S1-S5] Document independent CLI workflow and prove generated declarations type-check in an isolated TypeScript consumer without editing the original LWC repository; route: inline; commit: pending.
 
-T5 [S7] Generate deterministic object/field JSDoc from Describe metadata, including known picklist options and context limitations, without narrowing existing property types; route: bounded worker due context backstop; commit: pending.
+T5 [S7] Generate deterministic object/field JSDoc from Describe metadata, including known picklist options and context limitations, without narrowing existing property types; route: bounded worker due context backstop; commit: f9869af (verified complete).
 
 ## Log
 L1: Entonces creo que mejor sería cambiar de rumbo y optar por otro tipo de solución, podemos crear un cli en go que permita hacer un describe y obtener todos los datos de los objetos (con un fichero de configuración que permita filtrar qué objetos queremos obtener) o también generar .d.ts a partir de los métodos de apex, puesto que el tipado de sf solo incluye "any"
