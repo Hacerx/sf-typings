@@ -115,10 +115,12 @@ func localCredentials(ctx context.Context, alias string) (credentials, error) {
 	}
 	token, _ := record["accessToken"].(string)
 	instance, _ := record["instanceUrl"].(string)
+	if instance == "" {
+		return credentials{}, fmt.Errorf("local org unavailable")
+	}
 	return credentials{token, instance}, nil
 }
 
-// cappedWriter bounds CLI stdout without ever including its contents in errors.
 type cappedWriter struct {
 	bytes.Buffer
 	limit int
@@ -131,48 +133,48 @@ func (w *cappedWriter) Write(p []byte) (int, error) {
 	return w.Buffer.Write(p)
 }
 
-func cliJSON(ctx context.Context, args ...string) ([]byte, error) {
+func cliCredentials(ctx context.Context, alias string) (credentials, error) {
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "sf", args...)
-	buf := &cappedWriter{limit: 1 << 20}
-	cmd.Stdout = buf
+	cmd := exec.CommandContext(ctx, "sf", "org", "auth", "show-access-token", "-o", alias, "--no-prompt", "--json")
+	var buf cappedWriter
+	buf.limit = 1 << 20
+	cmd.Stdout = &buf
 	cmd.Stderr = io.Discard
 	if cmd.Run() != nil {
-		return nil, fmt.Errorf("Salesforce CLI unavailable")
-	}
-	return buf.Bytes(), nil
-}
-
-func cliCredentials(ctx context.Context, alias string) (credentials, error) {
-	data, err := cliJSON(ctx, "org", "auth", "show-access-token", "-o", alias, "--no-prompt", "--json")
-	if err != nil {
 		return credentials{}, fmt.Errorf("org token unavailable")
 	}
-	var response struct {
+	var result struct {
 		Status *int `json:"status"`
-		Result struct { AccessToken string `json:"accessToken"` } `json:"result"`
+		Result struct {
+			AccessToken string `json:"accessToken"`
+		} `json:"result"`
 	}
-	if decode(data, &response, false) != nil || response.Status == nil || *response.Status != 0 || response.Result.AccessToken == "" {
+	if decode(buf.Bytes(), &result, false) != nil || result.Status == nil || *result.Status != 0 || result.Result.AccessToken == "" {
 		return credentials{}, fmt.Errorf("org token unavailable")
 	}
-	return credentials{token: response.Result.AccessToken}, nil
+	return credentials{token: result.Result.AccessToken}, nil
 }
 
-// Display is only an instance URL source; never decode or use its accessToken.
+// cliInstanceURL reads only the instance URL. Even if sf org display includes an
+// access token, that value is never decoded or used for authentication.
 func cliInstanceURL(ctx context.Context, alias string) (string, error) {
-	data, err := cliJSON(ctx, "org", "display", "--target-org", alias, "--json")
-	if err != nil {
-		return "", fmt.Errorf("org instance unavailable")
-	}
-	var response struct {
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "sf", "org", "display", "--target-org", alias, "--json")
+	var buf cappedWriter
+	buf.limit = 1 << 20
+	cmd.Stdout = &buf
+	cmd.Stderr = io.Discard
+	if cmd.Run() != nil { return "", fmt.Errorf("org instance unavailable") }
+	var result struct {
 		Status *int `json:"status"`
 		Result struct { InstanceURL string `json:"instanceUrl"` } `json:"result"`
 	}
-	if decode(data, &response, false) != nil || response.Status == nil || *response.Status != 0 || response.Result.InstanceURL == "" {
+	if decode(buf.Bytes(), &result, false) != nil || result.Status == nil || *result.Status != 0 || result.Result.InstanceURL == "" {
 		return "", fmt.Errorf("org instance unavailable")
 	}
-	return response.Result.InstanceURL, nil
+	return result.Result.InstanceURL, nil
 }
 
 func trustedInstance(instance string) (*url.URL, bool) {
@@ -196,6 +198,10 @@ func trustedInstance(instance string) (*url.URL, bool) {
 	return u, true
 }
 
+type restHTTPError struct{ status int }
+
+func (e *restHTTPError) Error() string { return fmt.Sprintf("REST HTTP %d", e.status) }
+
 func restJSON(ctx context.Context, client *http.Client, base *url.URL, path, token string) ([]byte, error) {
 	u := *base
 	u.Path = path
@@ -211,7 +217,7 @@ func restJSON(ctx context.Context, client *http.Client, base *url.URL, path, tok
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("REST HTTP %d", resp.StatusCode)
+		return nil, &restHTTPError{status: resp.StatusCode}
 	}
 	data, err := io.ReadAll(io.LimitReader(resp.Body, (2<<20)+1))
 	if err != nil || len(data) > 2<<20 {
@@ -220,41 +226,48 @@ func restJSON(ctx context.Context, client *http.Client, base *url.URL, path, tok
 	return data, nil
 }
 
-func objectOutputs(ctx context.Context, alias string, names []string, snapshots bool, resolve credentialResolver, httpClient *http.Client) ([]output, error) {
-	return objectOutputsWithFallback(ctx, alias, names, snapshots, resolve, cliCredentials, cliInstanceURL, httpClient)
-}
-
-func objectOutputsWithFallback(ctx context.Context, alias string, names []string, snapshots bool, resolve, token credentialResolver, instanceURL func(context.Context, string) (string, error), httpClient *http.Client) ([]output, error) {
+func objectOutputs(ctx context.Context, alias string, names []string, snapshots bool, local, fallback credentialResolver, httpClient *http.Client) ([]output, error) {
 	ctx, cancel := context.WithTimeout(ctx, 35*time.Second)
 	defer cancel()
-	creds, err := resolve(ctx, alias)
-	if err != nil {
-		// An entirely unavailable local org may use display for the URL only.
+	creds, err := local(ctx, alias)
+	needInstance := err != nil || creds.instance == ""
+	if needInstance {
+		// Do not reuse a token from an incomplete local org record.
 		creds = credentials{}
-		creds.instance, err = instanceURL(ctx, alias)
-		if err != nil {
-			return nil, fmt.Errorf("org instance unavailable")
-		}
-	} else if creds.instance == "" {
-		return nil, fmt.Errorf("local org instance unavailable")
+		creds.instance, err = cliInstanceURL(ctx, alias)
+		if err != nil { return nil, fmt.Errorf("org instance unavailable") }
 	}
 	if _, ok := trustedInstance(creds.instance); !ok {
 		return nil, fmt.Errorf("untrusted org instance")
 	}
-	if creds.token == "" {
+	usingCLI := needInstance || creds.token == ""
+	if usingCLI {
 		instance := creds.instance
-		creds, err = token(ctx, alias)
-		if err != nil || creds.token == "" {
-			return nil, fmt.Errorf("org token unavailable")
-		}
-		creds.instance = instance // Ignore any instance returned by a token resolver.
+		creds, err = fallback(ctx, alias)
+		creds.instance = instance
+	}
+	if err != nil || creds.token == "" {
+		return nil, fmt.Errorf("org token unavailable")
 	}
 	if httpClient == nil {
 		httpClient = &http.Client{Timeout: 15 * time.Second}
 	}
 	client := *httpClient
 	client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
-	return restOutputs(ctx, names, snapshots, creds, &client)
+	files, err := restOutputs(ctx, names, snapshots, creds, &client)
+	var httpErr *restHTTPError
+	if !usingCLI && errors.As(err, &httpErr) && httpErr.status == http.StatusUnauthorized {
+		// Keep only the validated local instance URL; discard the stale bearer.
+		instance := creds.instance
+		creds = credentials{}
+		creds, err = fallback(ctx, alias)
+		if err != nil || creds.token == "" {
+			return nil, fmt.Errorf("org token unavailable")
+		}
+		creds.instance = instance
+		return restOutputs(ctx, names, snapshots, creds, &client)
+	}
+	return files, err
 }
 
 func restOutputs(ctx context.Context, names []string, snapshots bool, creds credentials, client *http.Client) ([]output, error) {
@@ -580,10 +593,10 @@ func save(dir string, files []output) error {
 }
 
 func run(args []string, stdout, stderr io.Writer) int {
-	return runWithDeps(args, stdout, stderr, localCredentials, nil)
+	return runWithDeps(args, stdout, stderr, localCredentials, cliCredentials, nil)
 }
 
-func runWithDeps(args []string, stdout, stderr io.Writer, resolve credentialResolver, client *http.Client) int {
+func runWithDeps(args []string, stdout, stderr io.Writer, local, fallback credentialResolver, client *http.Client) int {
 	flags := flag.NewFlagSet("sf-typings", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	cfg := flags.String("config", "", "JSON configuration path")
@@ -596,7 +609,7 @@ func runWithDeps(args []string, stdout, stderr io.Writer, resolve credentialReso
 		return 1
 	}
 	if *help {
-		fmt.Fprint(stdout, usage+"Config: {\"orgAlias\":\"dev\",\"objects\":[\"Account\"],\"apexSources\":[\"classes\"]}\nObjects use local auth and direct REST Describe. When the local token is absent, sf org auth show-access-token -o <alias> --no-prompt --json supplies only the token; when the local org is unavailable, sf org display supplies only the instance URL. No HTTP 401 retry. Apex-only runs use local .cls files without an org alias. Never retrieves records.\n")
+		fmt.Fprint(stdout, usage+"Config: {\"orgAlias\":\"dev\",\"objects\":[\"Account\"],\"apexSources\":[\"classes\"]}\nObjects use REST Describe. If local org URL is missing, sf org display supplies only the URL; sf org auth show-access-token supplies the fallback token. A local-token HTTP 401 triggers one token-only REST retry. Apex-only runs use local .cls files. Never retrieves records.\n")
 		return 0
 	}
 	if *cfg == "" || *out == "" || flags.NArg() != 0 {
@@ -608,10 +621,10 @@ func runWithDeps(args []string, stdout, stderr io.Writer, resolve credentialReso
 	if err == nil {
 		var files []output
 		if len(c.Objects) > 0 {
-			files, err = objectOutputs(context.Background(), c.OrgAlias, c.Objects, *snapshots, resolve, client)
+			files, err = objectOutputs(context.Background(), c.OrgAlias, c.Objects, *snapshots, local, fallback, client)
 		}
+		var apexFiles []output
 		if err == nil {
-			var apexFiles []output
 			apexFiles, err = apexOutputs(c.ApexSources)
 			apexCount = len(apexFiles)
 			files = append(files, apexFiles...)

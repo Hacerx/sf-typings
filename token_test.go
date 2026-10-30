@@ -97,7 +97,7 @@ func TestTokenFallbackRESTAndPreservation(t *testing.T) {
 			// Separate call logs per case without deleting existing files.
 			t.Setenv("SF_TYPINGS_LOG", filepath.Join(t.TempDir(), "invoked"))
 			log = os.Getenv("SF_TYPINGS_LOG")
-			files, err := objectOutputs(context.Background(), "dev", []string{"Account"}, false, func(context.Context, string) (credentials, error) { return tc.local, tc.localErr }, client)
+			files, err := objectOutputs(context.Background(), "dev", []string{"Account"}, false, func(context.Context, string) (credentials, error) { return tc.local, tc.localErr }, cliCredentials, client)
 			if err != nil || len(files) != 1 {
 				t.Fatalf("outputs=%d err=%v", len(files), err)
 			}
@@ -111,7 +111,7 @@ func TestTokenFallbackRESTAndPreservation(t *testing.T) {
 
 func TestDisplayHostValidatedBeforeToken(t *testing.T) {
 	root := mockTokenCLI(t, "__display_untrusted__")
-	_, err := objectOutputs(context.Background(), "dev", []string{"Account"}, false, func(context.Context, string) (credentials, error) { return credentials{}, fmt.Errorf("local missing") }, nil)
+	_, err := objectOutputs(context.Background(), "dev", []string{"Account"}, false, func(context.Context, string) (credentials, error) { return credentials{}, fmt.Errorf("local missing") }, cliCredentials, nil)
 	if err == nil || err.Error() != "untrusted org instance" {
 		t.Fatalf("error=%v", err)
 	}
