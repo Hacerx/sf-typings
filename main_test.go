@@ -17,8 +17,33 @@ import (
 
 func TestMain(m *testing.M) {
 	if os.Getenv("SF_TYPINGS_MOCK") == "1" {
-		fmt.Fprintln(os.Stderr, "unexpected sf invocation")
-		os.Exit(3)
+		argv := strings.Join(os.Args[1:], " ")
+		if argv != "org display --target-org dev --json" && argv != "org auth show-access-token -o dev --no-prompt --json" {
+			fmt.Fprintln(os.Stderr, "unexpected sf arguments")
+			os.Exit(3)
+		}
+		log, err := os.OpenFile(os.Getenv("SF_TYPINGS_LOG"), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
+		if err != nil {
+			os.Exit(4)
+		}
+		fmt.Fprintln(log, argv)
+		if log.Close() != nil {
+			os.Exit(4)
+		}
+		if argv == "org display --target-org dev --json" {
+			if os.Getenv("SF_TYPINGS_RESPONSE") == "__display_untrusted__" {
+				fmt.Print(`{"status":0,"result":{"instanceUrl":"https://evil.example","accessToken":"display-secret"}}`)
+			} else {
+				fmt.Print(`{"status":0,"result":{"instanceUrl":"https://sample.my.salesforce.com","accessToken":"display-secret"}}`)
+			}
+			os.Exit(0)
+		}
+		if os.Getenv("SF_TYPINGS_RESPONSE") == "__fail__" {
+			fmt.Fprintln(os.Stderr, "secret-bearing failure")
+			os.Exit(7)
+		}
+		fmt.Print(os.Getenv("SF_TYPINGS_RESPONSE"))
+		os.Exit(0)
 	}
 	os.Exit(m.Run())
 }
@@ -100,31 +125,46 @@ func TestRESTPublicCLI(t *testing.T) {
 			root := t.TempDir()
 			cfg := filepath.Join(root, "config.json")
 			data, _ := json.Marshal(map[string]any{"orgAlias": "dev", "objects": tc.objects})
-			if err := os.WriteFile(cfg, data, 0600); err != nil { t.Fatal(err) }
+			if err := os.WriteFile(cfg, data, 0600); err != nil {
+				t.Fatal(err)
+			}
 			outDir := filepath.Join(root, "generated")
-			if err := os.Mkdir(outDir, 0700); err != nil { t.Fatal(err) }
+			if err := os.Mkdir(outDir, 0700); err != nil {
+				t.Fatal(err)
+			}
 			prior := filepath.Join(outDir, "Account.d.ts")
 			if tc.wantError != "" {
-				if err := os.WriteFile(prior, []byte("original"), 0600); err != nil { t.Fatal(err) }
+				if err := os.WriteFile(prior, []byte("original"), 0600); err != nil {
+					t.Fatal(err)
+				}
 			}
 			server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				if r.Header.Get("Authorization") != "Bearer private-token" { t.Error("missing bearer") }
+				if r.Header.Get("Authorization") != "Bearer private-token" {
+					t.Error("missing bearer")
+				}
 				switch r.URL.Path {
 				case "/services/data/":
 					io.WriteString(w, `[{"version":"10.9"},{"version":"10.10"}]`)
 				case "/services/data/v10.10/sobjects/Account/describe":
 					if tc.name == "second_describe_failure" {
 						io.WriteString(w, `{"name":"Account","fields":[]}`)
-					} else if tc.status != 0 { w.WriteHeader(tc.status) } else { io.WriteString(w, tc.result) }
+					} else if tc.status != 0 {
+						w.WriteHeader(tc.status)
+					} else {
+						io.WriteString(w, tc.result)
+					}
 				case "/services/data/v10.10/sobjects/Contact/describe":
 					io.WriteString(w, tc.result)
-				default: t.Errorf("unexpected REST path %s", r.URL.Path)
+				default:
+					t.Errorf("unexpected REST path %s", r.URL.Path)
 				}
 			}))
 			defer server.Close()
 			transport := server.Client().Transport
 			client := &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
-				if r.URL.Host != "sample.my.salesforce.com" { t.Errorf("unexpected target %s", r.URL.Host) }
+				if r.URL.Host != "sample.my.salesforce.com" {
+					t.Errorf("unexpected target %s", r.URL.Host)
+				}
 				clone := r.Clone(r.Context())
 				clone.URL.Host = strings.TrimPrefix(server.URL, "https://")
 				return transport.RoundTrip(clone)
@@ -134,22 +174,38 @@ func TestRESTPublicCLI(t *testing.T) {
 			code := runWithDeps([]string{"-config", cfg, "-out", outDir, "-snapshots"}, &out, &errs,
 				func(_ context.Context, alias string) (credentials, error) {
 					calls++
-					if alias != "dev" { t.Errorf("alias=%q", alias) }
+					if alias != "dev" {
+						t.Errorf("alias=%q", alias)
+					}
 					return credentials{"private-token", "https://sample.my.salesforce.com"}, nil
 				}, client)
-			if calls != 1 { t.Fatalf("resolver calls=%d", calls) }
+			if calls != 1 {
+				t.Fatalf("resolver calls=%d", calls)
+			}
 			if tc.wantError != "" {
-				if out.String() != "" || errs.String() != "sf-typings: "+tc.wantError+"\n" || code != 1 { t.Fatalf("stdout=%q stderr=%q exit=%d", out.String(), errs.String(), code) }
+				if out.String() != "" || errs.String() != "sf-typings: "+tc.wantError+"\n" || code != 1 {
+					t.Fatalf("stdout=%q stderr=%q exit=%d", out.String(), errs.String(), code)
+				}
 				assertUnchanged(t, prior)
-				if _, err := os.Stat(filepath.Join(outDir, "Account.describe.json")); !os.IsNotExist(err) { t.Fatalf("unexpected snapshot: %v", err) }
-				if _, err := os.Stat(filepath.Join(outDir, "Contact.d.ts")); !os.IsNotExist(err) { t.Fatalf("unexpected Contact: %v", err) }
+				if _, err := os.Stat(filepath.Join(outDir, "Account.describe.json")); !os.IsNotExist(err) {
+					t.Fatalf("unexpected snapshot: %v", err)
+				}
+				if _, err := os.Stat(filepath.Join(outDir, "Contact.d.ts")); !os.IsNotExist(err) {
+					t.Fatalf("unexpected Contact: %v", err)
+				}
 			} else {
-				if out.String() != "Generated 1 object(s).\n" || errs.String() != "" || code != 0 { t.Fatalf("stdout=%q stderr=%q exit=%d", out.String(), errs.String(), code) }
+				if out.String() != "Generated 1 object(s).\n" || errs.String() != "" || code != 0 {
+					t.Fatalf("stdout=%q stderr=%q exit=%d", out.String(), errs.String(), code)
+				}
 				decl, err := os.ReadFile(prior)
 				want := "// Generated by sf-typings. Do not edit.\nexport interface Account {\n  AnnualRevenue?: number | null;\n  IsActive__c?: boolean;\n  Name?: string;\n}\n"
-				if err != nil || string(decl) != want { t.Fatalf("declaration=%q err=%v", decl, err) }
+				if err != nil || string(decl) != want {
+					t.Fatalf("declaration=%q err=%v", decl, err)
+				}
 				snapshot, err := os.ReadFile(filepath.Join(outDir, "Account.describe.json"))
-				if err != nil || !strings.Contains(string(snapshot), `"extra": {`) { t.Fatalf("snapshot=%q err=%v", snapshot, err) }
+				if err != nil || !strings.Contains(string(snapshot), `"extra": {`) {
+					t.Fatalf("snapshot=%q err=%v", snapshot, err)
+				}
 			}
 		})
 	}
@@ -157,13 +213,17 @@ func TestRESTPublicCLI(t *testing.T) {
 
 func TestRESTSecurity(t *testing.T) {
 	for _, instance := range []string{"http://sample.my.salesforce.com", "https://sample.my.salesforce.com.evil.test", "https://sample.my.salesforce.com:444", "https://user@sample.my.salesforce.com", "https://sample.my.salesforce.com/path", "https://evil.test"} {
-		if _, ok := trustedInstance(instance); ok { t.Errorf("accepted untrusted instance %q", instance) }
+		if _, ok := trustedInstance(instance); ok {
+			t.Errorf("accepted untrusted instance %q", instance)
+		}
 	}
 	for _, tc := range []struct {
 		name    string
 		handler http.HandlerFunc
 	}{
-		{"redirect", func(w http.ResponseWriter, r *http.Request) { http.Redirect(w, r, "https://evil.test/secret", http.StatusFound) }},
+		{"redirect", func(w http.ResponseWriter, r *http.Request) {
+			http.Redirect(w, r, "https://evil.test/secret", http.StatusFound)
+		}},
 		{"oversize", func(w http.ResponseWriter, r *http.Request) { io.WriteString(w, strings.Repeat("x", (2<<20)+1)) }},
 		{"invalid_version", func(w http.ResponseWriter, r *http.Request) { io.WriteString(w, `[{"version":"latest"}]`) }},
 	} {
@@ -172,14 +232,20 @@ func TestRESTSecurity(t *testing.T) {
 			defer server.Close()
 			transport := server.Client().Transport
 			client := &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
-				if r.URL.Host == "evil.test" { t.Error("redirect sent bearer to foreign host") }
+				if r.URL.Host == "evil.test" {
+					t.Error("redirect sent bearer to foreign host")
+				}
 				clone := r.Clone(r.Context())
 				clone.URL.Host = strings.TrimPrefix(server.URL, "https://")
 				return transport.RoundTrip(clone)
 			})}
 			_, err := objectOutputs(context.Background(), "dev", []string{"Account"}, false,
-				func(context.Context, string) (credentials, error) { return credentials{"private-token", "https://sample.my.salesforce.com"}, nil }, client)
-			if err == nil || strings.Contains(err.Error(), "private-token") { t.Fatalf("error=%v", err) }
+				func(context.Context, string) (credentials, error) {
+					return credentials{"private-token", "https://sample.my.salesforce.com"}, nil
+				}, client)
+			if err == nil || strings.Contains(err.Error(), "private-token") {
+				t.Fatalf("error=%v", err)
+			}
 		})
 	}
 }
@@ -212,15 +278,33 @@ func TestRESTNoRetry(t *testing.T) {
 }
 
 func TestRESTLocalFailure(t *testing.T) {
-	for _, tc := range []struct { name string; creds credentials; err error; want string }{
-		{"no_local_org", credentials{}, fmt.Errorf("secret-bearing lookup failure"), "local org unavailable"},
-		{"missing_token", credentials{instance:"https://sample.my.salesforce.com"}, nil, "local org unavailable"},
-		{"untrusted_host", credentials{token:"secret", instance:"https://evil.test"}, nil, "untrusted org instance"},
+	for _, tc := range []struct {
+		name             string
+		creds            credentials
+		localErr         error
+		want             string
+		displays, tokens int
+	}{
+		{"no_local_org", credentials{}, fmt.Errorf("secret-bearing lookup failure"), "org instance unavailable", 1, 0},
+		{"missing_token", credentials{instance: "https://sample.my.salesforce.com"}, nil, "org token unavailable", 0, 1},
+		{"incomplete_local_url", credentials{token: "secret"}, nil, "local org instance unavailable", 0, 0},
+		{"untrusted_host", credentials{token: "secret", instance: "https://evil.test"}, nil, "untrusted org instance", 0, 0},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			_, err := objectOutputs(context.Background(), "dev", []string{"Account"}, false,
-				func(context.Context, string) (credentials, error) { return tc.creds, tc.err }, nil)
-			if err == nil || err.Error() != tc.want { t.Fatalf("error=%v want=%q", err, tc.want) }
+			displays, tokens := 0, 0
+			_, err := objectOutputsWithFallback(context.Background(), "dev", []string{"Account"}, false,
+				func(context.Context, string) (credentials, error) { return tc.creds, tc.localErr },
+				func(context.Context, string) (credentials, error) {
+					tokens++
+					return credentials{}, fmt.Errorf("secret-bearing token error")
+				},
+				func(context.Context, string) (string, error) {
+					displays++
+					return "", fmt.Errorf("secret-bearing display error")
+				}, nil)
+			if err == nil || err.Error() != tc.want || displays != tc.displays || tokens != tc.tokens {
+				t.Fatalf("error=%v displays=%d tokens=%d want=%q", err, displays, tokens, tc.want)
+			}
 		})
 	}
 }
@@ -228,30 +312,46 @@ func TestRESTLocalFailure(t *testing.T) {
 func assertUnchanged(t *testing.T, path string) {
 	t.Helper()
 	got, err := os.ReadFile(path)
-	if err != nil || string(got) != "original" { t.Fatalf("prior output=%q err=%v", got, err) }
+	if err != nil || string(got) != "original" {
+		t.Fatalf("prior output=%q err=%v", got, err)
+	}
 }
 
 func TestPublicCLI(t *testing.T) {
 	t.Run("invalid_config_preserves_prior_output_without_sf", func(t *testing.T) {
 		root, binary, args := fixture(t, map[string]any{"orgAlias": "dev", "objects": []string{"../Account"}}, "")
 		prior := filepath.Join(root, "generated", "Account.d.ts")
-		if err := os.MkdirAll(filepath.Dir(prior), 0700); err != nil { t.Fatal(err) }
-		if err := os.WriteFile(prior, []byte("original"), 0600); err != nil { t.Fatal(err) }
+		if err := os.MkdirAll(filepath.Dir(prior), 0700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(prior, []byte("original"), 0600); err != nil {
+			t.Fatal(err)
+		}
 		out, errs, status := runCLI(t, root, binary, "", args...)
-		if out != "" || errs != "sf-typings: invalid object API name\n" || status != 1 { t.Fatalf("stdout=%q stderr=%q exit=%d", out, errs, status) }
+		if out != "" || errs != "sf-typings: invalid object API name\n" || status != 1 {
+			t.Fatalf("stdout=%q stderr=%q exit=%d", out, errs, status)
+		}
 		assertUnchanged(t, prior)
-		if _, err := os.Stat(filepath.Join(root, "invoked")); !os.IsNotExist(err) { t.Fatalf("sf invoked: %v", err) }
+		if _, err := os.Stat(filepath.Join(root, "invoked")); !os.IsNotExist(err) {
+			t.Fatalf("sf invoked: %v", err)
+		}
 	})
-	for _, tc := range []struct { name, cfg, want string }{
+	for _, tc := range []struct{ name, cfg, want string }{
 		{"invalid_org", `{"orgAlias":"dev;echo secret","objects":["Account"]}`, "invalid org alias"},
 		{"duplicate_objects", `{"orgAlias":"dev","objects":["Account","Account"]}`, "duplicate object API name"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			root, binary, args := fixture(t, map[string]any{"apexSources": []string{}}, "")
-			if err := os.WriteFile(args[1], []byte(tc.cfg), 0600); err != nil { t.Fatal(err) }
+			if err := os.WriteFile(args[1], []byte(tc.cfg), 0600); err != nil {
+				t.Fatal(err)
+			}
 			out, errs, status := runCLI(t, root, binary, "", args...)
-			if out != "" || errs != "sf-typings: "+tc.want+"\n" || status != 1 { t.Fatalf("stdout=%q stderr=%q exit=%d", out, errs, status) }
-			if _, err := os.Stat(filepath.Join(root, "invoked")); !os.IsNotExist(err) { t.Fatalf("sf invoked: %v", err) }
+			if out != "" || errs != "sf-typings: "+tc.want+"\n" || status != 1 {
+				t.Fatalf("stdout=%q stderr=%q exit=%d", out, errs, status)
+			}
+			if _, err := os.Stat(filepath.Join(root, "invoked")); !os.IsNotExist(err) {
+				t.Fatalf("sf invoked: %v", err)
+			}
 		})
 	}
 }
@@ -259,8 +359,10 @@ func TestPublicCLI(t *testing.T) {
 func TestHelpIncludesApexOnly(t *testing.T) {
 	root, binary, _ := fixture(t, map[string]any{"apexSources": []string{}}, "")
 	out, errs, status := runCLI(t, root, binary, "", "-help")
-	want := "Usage: sf-typings -config config.json -out generated [-snapshots]\nConfig: {\"orgAlias\":\"dev\",\"objects\":[\"Account\"],\"apexSources\":[\"classes\"]}\nObjects use local auth and direct REST Describe; no sf sobject describe or CLI token fallback. Apex-only runs use local .cls files without an org alias. Never retrieves records.\n"
-	if out != want || errs != "" || status != 0 { t.Fatalf("stdout=%q stderr=%q exit=%d", out, errs, status) }
+	want := "Usage: sf-typings -config config.json -out generated [-snapshots]\nConfig: {\"orgAlias\":\"dev\",\"objects\":[\"Account\"],\"apexSources\":[\"classes\"]}\nObjects use local auth and direct REST Describe. When the local token is absent, sf org auth show-access-token -o <alias> --no-prompt --json supplies only the token; when the local org is unavailable, sf org display supplies only the instance URL. No HTTP 401 retry. Apex-only runs use local .cls files without an org alias. Never retrieves records.\n"
+	if out != want || errs != "" || status != 0 {
+		t.Fatalf("stdout=%q stderr=%q exit=%d", out, errs, status)
+	}
 }
 
 func TestApexCLI(t *testing.T) {
