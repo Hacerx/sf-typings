@@ -2,7 +2,10 @@ module sf-typings
 
 go 1.23
 
-require github.com/octoberswimmer/apexfmt v0.69.0
+require (
+	github.com/hacerx/sf-auth-decrypt-go v1.0.0
+	github.com/octoberswimmer/apexfmt v0.69.0
+)
 
 require (
 	github.com/antlr4-go/antlr/v4 v4.13.1 // indirect

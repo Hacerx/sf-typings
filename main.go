@@ -3,17 +3,22 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
 	"io"
+	"net/http"
+	"net/url"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
+	"time"
+
+	"github.com/hacerx/sf-auth-decrypt-go/authdecrypt"
 
 	"github.com/antlr4-go/antlr/v4"
 	"github.com/octoberswimmer/apexfmt/parser"
@@ -21,6 +26,7 @@ import (
 
 var apiName = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_]*$`)
 var aliasName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.-]*$`)
+var restVersion = regexp.MustCompile(`^[0-9]+\.[0-9]+$`)
 
 type config struct {
 	OrgAlias    string   `json:"orgAlias"`
@@ -92,6 +98,145 @@ func loadConfig(path string) (config, error) {
 	}
 	sort.Strings(c.Objects)
 	return c, nil
+}
+
+type credentials struct{ token, instance string }
+type credentialResolver func(context.Context, string) (credentials, error)
+
+func localCredentials(ctx context.Context, alias string) (credentials, error) {
+	client, err := authdecrypt.New()
+	if err != nil {
+		return credentials{}, fmt.Errorf("local org unavailable")
+	}
+	record, err := client.ResolveOrg(ctx, alias)
+	if err != nil {
+		return credentials{}, fmt.Errorf("local org unavailable")
+	}
+	token, _ := record["accessToken"].(string)
+	instance, _ := record["instanceUrl"].(string)
+	if token == "" || instance == "" {
+		return credentials{}, fmt.Errorf("local org unavailable")
+	}
+	return credentials{token, instance}, nil
+}
+
+func trustedInstance(instance string) (*url.URL, bool) {
+	u, err := url.Parse(instance)
+	if err != nil || u.Scheme != "https" || u.User != nil || u.Port() != "" || u.RawQuery != "" || u.Fragment != "" || (u.Path != "" && u.Path != "/") {
+		return nil, false
+	}
+	host := strings.ToLower(u.Hostname())
+	if host == "" || strings.HasSuffix(host, ".") {
+		return nil, false
+	}
+	trusted := false
+	for _, suffix := range []string{".my.salesforce.com", ".salesforce.com", ".force.com"} {
+		if strings.HasSuffix(host, suffix) && len(host) > len(suffix) {
+			trusted = true
+		}
+	}
+	if !trusted {
+		return nil, false
+	}
+	return u, true
+}
+
+func restJSON(ctx context.Context, client *http.Client, base *url.URL, path, token string) ([]byte, error) {
+	u := *base
+	u.Path = path
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
+	if err != nil {
+		return nil, fmt.Errorf("invalid REST request")
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Accept", "application/json")
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("REST network request failed")
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("REST HTTP %d", resp.StatusCode)
+	}
+	data, err := io.ReadAll(io.LimitReader(resp.Body, (2<<20)+1))
+	if err != nil || len(data) > 2<<20 {
+		return nil, fmt.Errorf("invalid REST response")
+	}
+	return data, nil
+}
+
+func objectOutputs(ctx context.Context, alias string, names []string, snapshots bool, resolve credentialResolver, httpClient *http.Client) ([]output, error) {
+	ctx, cancel := context.WithTimeout(ctx, 35*time.Second)
+	defer cancel()
+	creds, err := resolve(ctx, alias)
+	if err != nil || creds.token == "" || creds.instance == "" {
+		return nil, fmt.Errorf("local org unavailable")
+	}
+	if httpClient == nil {
+		httpClient = &http.Client{Timeout: 15 * time.Second}
+	}
+	client := *httpClient
+	client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	return restOutputs(ctx, names, snapshots, creds, &client)
+}
+
+func restOutputs(ctx context.Context, names []string, snapshots bool, creds credentials, client *http.Client) ([]output, error) {
+	base, ok := trustedInstance(creds.instance)
+	if !ok {
+		return nil, fmt.Errorf("untrusted org instance")
+	}
+	versionsRaw, err := restJSON(ctx, client, base, "/services/data/", creds.token)
+	if err != nil {
+		return nil, fmt.Errorf("REST version lookup: %w", err)
+	}
+	var versions []struct {
+		Version string `json:"version"`
+	}
+	if decode(versionsRaw, &versions, false) != nil {
+		return nil, fmt.Errorf("invalid REST versions")
+	}
+	version, major, minor := "", "", ""
+	for _, item := range versions {
+		if !restVersion.MatchString(item.Version) {
+			continue
+		}
+		parts := strings.SplitN(item.Version, ".", 2)
+		for i := range parts {
+			parts[i] = strings.TrimLeft(parts[i], "0")
+			if parts[i] == "" {
+				parts[i] = "0"
+			}
+		}
+		// Compare decimal integers without overflow or floating-point rounding.
+		greater := version == "" || len(parts[0]) > len(major) || (len(parts[0]) == len(major) && parts[0] > major) ||
+			(parts[0] == major && (len(parts[1]) > len(minor) || (len(parts[1]) == len(minor) && parts[1] > minor)))
+		if greater {
+			version, major, minor = item.Version, parts[0], parts[1]
+		}
+	}
+	if version == "" {
+		return nil, fmt.Errorf("invalid REST versions")
+	}
+	var files []output
+	for _, name := range names {
+		raw, err := restJSON(ctx, client, base, "/services/data/v"+version+"/sobjects/"+name+"/describe", creds.token)
+		if err != nil {
+			return nil, fmt.Errorf("REST Describe for %s: %w", name, err)
+		}
+		wrapped, err := json.Marshal(struct {
+			Status int             `json:"status"`
+			Result json.RawMessage `json:"result"`
+		}{0, raw})
+		if err != nil {
+			return nil, fmt.Errorf("invalid REST response")
+		}
+		generated, err := generate(name, wrapped, snapshots)
+		if err != nil {
+			return nil, err
+		}
+		files = append(files, generated...)
+	}
+	return files, nil
 }
 
 func tsType(kind string) string {
@@ -358,6 +503,10 @@ func save(dir string, files []output) error {
 }
 
 func run(args []string, stdout, stderr io.Writer) int {
+	return runWithDeps(args, stdout, stderr, localCredentials, nil)
+}
+
+func runWithDeps(args []string, stdout, stderr io.Writer, resolve credentialResolver, client *http.Client) int {
 	flags := flag.NewFlagSet("sf-typings", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	cfg := flags.String("config", "", "JSON configuration path")
@@ -370,7 +519,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 	if *help {
-		fmt.Fprint(stdout, usage+"Config: {\"orgAlias\":\"dev\",\"objects\":[\"Account\"],\"apexSources\":[\"classes\"]}\nObjects use sf sobject describe; Apex-only runs use local .cls files without sf or an org alias. Never retrieves records.\n")
+		fmt.Fprint(stdout, usage+"Config: {\"orgAlias\":\"dev\",\"objects\":[\"Account\"],\"apexSources\":[\"classes\"]}\nObjects use local auth and direct REST Describe; no sf sobject describe or CLI token fallback. Apex-only runs use local .cls files without an org alias. Never retrieves records.\n")
 		return 0
 	}
 	if *cfg == "" || *out == "" || flags.NArg() != 0 {
@@ -381,19 +530,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 	apexCount := 0
 	if err == nil {
 		var files []output
-		for _, name := range c.Objects {
-			cmd := exec.Command("sf", "sobject", "describe", "--sobject", name, "--target-org", c.OrgAlias, "--json")
-			raw, callErr := cmd.Output()
-			if callErr != nil {
-				err = fmt.Errorf("sf describe failed for %s", name)
-				break
-			}
-			var generated []output
-			generated, err = generate(name, raw, *snapshots)
-			if err != nil {
-				break
-			}
-			files = append(files, generated...)
+		if len(c.Objects) > 0 {
+			files, err = objectOutputs(context.Background(), c.OrgAlias, c.Objects, *snapshots, resolve, client)
 		}
 		if err == nil {
 			var apexFiles []output

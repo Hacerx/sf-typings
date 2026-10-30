@@ -1,5 +1,7 @@
 github.com/antlr4-go/antlr/v4 v4.13.1 h1:SqQKkuVZ+zWkMMNkjy5FZe5mr5WURWnlpmOuzYWrPrQ=
 github.com/antlr4-go/antlr/v4 v4.13.1/go.mod h1:GKmUxMtwp6ZgGwZSva4eWPC5mS6vUAmOABFgjdkM7Nw=
+github.com/hacerx/sf-auth-decrypt-go v1.0.0 h1:FcZ80VqJkYd6r7qTbg7X0UiTNDu40sWlbKTuRaGF9XQ=
+github.com/hacerx/sf-auth-decrypt-go v1.0.0/go.mod h1:1NSOwFTHgA1eSCd1dITaBp2Vm6UxFRv7ohileduDohE=
 github.com/octoberswimmer/apexfmt v0.69.0 h1:+wzdHeyHA9Yzx6DOf8ckKzsmt9PfQgTvzbxIpW8iVDM=
 github.com/octoberswimmer/apexfmt v0.69.0/go.mod h1:gvLk7k7LJA4YibjYUR2RrSpRkzkzXnPRz0sIkxUEvA0=
 golang.org/x/exp v0.0.0-20240506185415-9bf2ced13842 h1:vr/HnozRka3pE4EsMEg1lgkXJkTFJCVUX+S/ZT6wYzM=
