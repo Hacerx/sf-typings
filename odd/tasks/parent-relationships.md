@@ -1,0 +1,27 @@
+# Parent relationship declarations
+Generate typed parent relationships and automatically describe referenced objects in sf-typings.
+Preserve committed baseline 5c8fb10 and the original lwc-content-mapper worktree; no publishing.
+
+## Specs
+S1: "Sería necesario añadir también el caso de los __r con la información del relacionado"
+S2: "Comitea el contenido hasta ahora y continúa con las relaciones hacia el padre, sí, retrivea las relaciones aunque no estén configuradas"
+
+S3: "En lugar de todo dentro del main.go, crea una estructura correcta y siguiendo buenas prácticas para el proyecto"
+S4: "Crea una estructura de carpetas, no lo dejes todo en la raíz"
+
+## Tasks
+T0 [S3-S4] Separate thin executable entrypoint, CLI, config, auth, Salesforce REST, and declaration generation into cohesive Go packages while preserving existing public commands/output and all checks; route: bounded worker first, independent verifier for auth-boundary refactor; commit: pending.
+T1 [S1-S3] Generate optional typed parent properties from relationshipName/referenceTo with correct imports, self/polymorphic handling, existing IDs and metadata preserved; route: bounded worker; commit: pending.
+T2 [S2-S3] Discover and fetch the transitive parent Describe graph beyond configured roots, deduplicating cycles and validating targets before requests; route: same bounded worker (dependent behavior); commit: pending.
+T3 [S1-S3] Verify graph outputs and TypeScript imports/cycles, regression checks, docs/help, assessment and reviewable commits; route: parent checks and risk-gated verification; commit: pending.
+
+## Log
+L7: Crea una estructura de carpetas, no lo dejes todo en la raíz
+L8: Reinforced folder structure sent to worker: internal/cli, config, auth, salesforce, generator, including colocated tests/helpers. Root main.go remains minimal only to preserve go run . compatibility; no implementation dump at root.
+L5: En lugar de todo dentro del main.go, crea una estructura correcta y siguiendo buenas prácticas para el proyecto
+L6: Plan adjustment before source writes: first refactor into cohesive internal packages with thin main.go and compatible go run . entry, avoiding a new framework/dependency. Then implement graph relationships against the new structure in a separate work unit. Keep auth host/redirect/response boundaries and public behavior pinned by tests; independently verify auth-related refactor. No source changes had started for relationships when the user corrected structure.
+L1: Sería necesario añadir también el caso de los __r con la información del relacionado
+L2: Comitea el contenido hasta ahora y continúa con las relaciones hacia el padre, sí, retrivea las relaciones aunque no estén configuradas
+L3: Baseline is already committed and sf-typings worktree clean at 5c8fb10; prior implementation 0f66e28. No empty commit needed. Native review for the old authentication unit remains blocked by external managed-assets sync authorization; do not imply approval or mutate it.
+L9: T0 worker relocated implementation/tests into internal/cli, config, auth, salesforce, generator, jsonutil and testutil; main.go is 10 lines. All 30 prior tests retained, 32 current functions including extracted host checks; dependencies unchanged. Focused package tests and CGO_ENABLED=0 build passed. Offline differential against 5c8fb10 matched help, invalid config and Apex-only generation exit/stdout/stderr/files, receipt .tmp/structure-check/differential-m0pg5nrs/results.json. Parent full `go test ./... -count=1` passed (CLI 96.526s). Independent verifier passed S3/S4 by inspection, no severe finding; no live auth or network. It noted large mostly-move reviewer workload (1966 additions/1613 deletions across 26 paths), recommended isolating pure extraction then auth+REST, and confirmed no file-publication atomicity guarantee beyond the existing behavior. Refactor will remain separate from relationships; no native approval claimed. Risk: item 2 (security-boundary code relocated), independent inspection complete; native review assets blocker remains.
+L4: Design: use Salesforce relationshipName verbatim rather than suffix guessing, for standard and custom parents; preserve ID properties and optional projections. Auto-discover transitive referenceTo targets only for parent relationships that can be generated, handle self/cycles with visited set, polymorphic targets as unions with type-only imports, deterministic output. Preserve field metadata/type behavior, complete per-object snapshots and all-or-nothing publication on validation/network failures. Validate derived names before URLs/imports/file paths; keep HTTPS trust, response limits, auth fallback and bounded network behavior. No childRelationships generation or data retrieval. Configured objects remain roots; output count should accurately include discovered objects and help/docs must explain it.

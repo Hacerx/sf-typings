@@ -1,4 +1,4 @@
-package main
+package cli
 
 import (
 	"context"
@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"sf-typings/internal/auth"
 )
 
 func mockTokenCLI(t *testing.T, response string) string {
@@ -27,34 +29,6 @@ func assertCalls(t *testing.T, root, want string) {
 	data, err := os.ReadFile(filepath.Join(root, "invoked"))
 	if err != nil || string(data) != want {
 		t.Fatalf("CLI calls=%q err=%v want=%q", data, err, want)
-	}
-}
-
-func TestTokenCLIFallback(t *testing.T) {
-	const tokenCall = "org auth show-access-token -o dev --no-prompt --json\n"
-	for _, tc := range []struct {
-		name, response string
-		valid          bool
-	}{
-		{"token_only", `{"status":0,"result":{"accessToken":"private-token","instanceUrl":"https://evil.example"}}`, true},
-		{"invalid_json", `{"status":0,"result":{"accessToken":"private-token"`, false},
-		{"no_token", `{"status":0,"result":{"instanceUrl":"https://evil.example"}}`, false},
-		{"bad_status", `{"status":1,"result":{"accessToken":"private-token"}}`, false},
-		{"process_failure", "__fail__", false},
-		{"capped_stdout", strings.Repeat("x", (1<<20)+1), false},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			root := mockTokenCLI(t, tc.response)
-			creds, err := cliCredentials(context.Background(), "dev")
-			if tc.valid {
-				if err != nil || creds.token != "private-token" || creds.instance != "" {
-					t.Fatalf("credentials invalid: token present=%t instance=%q err=%v", creds.token != "", creds.instance, err)
-				}
-			} else if err == nil || err.Error() != "org token unavailable" || creds.token != "" {
-				t.Fatalf("unredacted failure: %v", err)
-			}
-			assertCalls(t, root, tokenCall)
-		})
 	}
 }
 
@@ -85,19 +59,19 @@ func TestTokenFallbackRESTAndPreservation(t *testing.T) {
 	})}
 	for _, tc := range []struct {
 		name      string
-		local     credentials
+		local     auth.Credentials
 		localErr  error
 		wantCalls string
 	}{
-		{"local_url", credentials{instance: "https://sample.my.salesforce.com"}, nil, "org auth show-access-token -o dev --no-prompt --json\n"},
-		{"display_url_only", credentials{token: "discard-me"}, fmt.Errorf("local missing"), "org display --target-org dev --json\norg auth show-access-token -o dev --no-prompt --json\n"},
+		{"local_url", auth.Credentials{Instance: "https://sample.my.salesforce.com"}, nil, "org auth show-access-token -o dev --no-prompt --json\n"},
+		{"display_url_only", auth.Credentials{Token: "discard-me"}, fmt.Errorf("local missing"), "org display --target-org dev --json\norg auth show-access-token -o dev --no-prompt --json\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			log := filepath.Join(root, "invoked")
 			// Separate call logs per case without deleting existing files.
 			t.Setenv("SF_TYPINGS_LOG", filepath.Join(t.TempDir(), "invoked"))
 			log = os.Getenv("SF_TYPINGS_LOG")
-			files, err := objectOutputs(context.Background(), "dev", []string{"Account"}, false, func(context.Context, string) (credentials, error) { return tc.local, tc.localErr }, cliCredentials, client)
+			files, err := objectOutputs(context.Background(), "dev", []string{"Account"}, false, func(context.Context, string) (auth.Credentials, error) { return tc.local, tc.localErr }, auth.Token, client)
 			if err != nil || len(files) != 1 {
 				t.Fatalf("outputs=%d err=%v", len(files), err)
 			}
@@ -111,7 +85,9 @@ func TestTokenFallbackRESTAndPreservation(t *testing.T) {
 
 func TestDisplayHostValidatedBeforeToken(t *testing.T) {
 	root := mockTokenCLI(t, "__display_untrusted__")
-	_, err := objectOutputs(context.Background(), "dev", []string{"Account"}, false, func(context.Context, string) (credentials, error) { return credentials{}, fmt.Errorf("local missing") }, cliCredentials, nil)
+	_, err := objectOutputs(context.Background(), "dev", []string{"Account"}, false, func(context.Context, string) (auth.Credentials, error) {
+		return auth.Credentials{}, fmt.Errorf("local missing")
+	}, auth.Token, nil)
 	if err == nil || err.Error() != "untrusted org instance" {
 		t.Fatalf("error=%v", err)
 	}

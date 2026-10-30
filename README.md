@@ -76,4 +76,22 @@ Apex generation reads only local `.cls` files and emits a `Class.d.ts` with ambi
 
 The output directory should be included in your LWC project's TypeScript `include` paths before importing a declaration. For example, put the generated files under a directory already included by your project's `tsconfig.json`; no changes to the LWC project are made by this CLI. Keep org-specific snapshots out of version control when appropriate. A generated signature describes Apex source code, not the user's access rights or the runtime serialization of arbitrary custom Apex classes.
 
-Run the public CLI tests from this repository with `go test ./...`.
+## Project structure
+
+The root remains a thin executable entrypoint: both `go run .` and `go build .` work as before. Implementation and tests live together under `internal/`:
+
+```text
+main.go                 # delegates process arguments, streams and exit status
+internal/
+  cli/                  # flags, auth/retry orchestration, staged output publication
+  config/               # strict JSON configuration and sorted object validation
+  auth/                 # local authdecrypt resolution and bounded sf subprocesses
+  salesforce/           # trusted HTTPS REST version discovery and Describe requests
+  generator/            # object, picklist, JSDoc, snapshot and local Apex declarations
+  jsonutil/             # shared precision-preserving, single-value JSON decoder
+  testutil/             # fake sf subprocess support for isolated package tests
+```
+
+The CLI composes these packages using credential resolver functions and an injectable HTTP client. REST visits complete Describe responses through a callback; it does not depend on declaration rendering. The generator returns in-memory files without authentication or network access. The CLI publishes only after every configured object and Apex source succeeds. No additional command framework or duplicate executable is needed.
+
+Run the public CLI and package tests from this repository with `go test ./...`. Public CLI tests build the actual root executable even though the tests live in `internal/cli`. Authentication tests use synthetic local fixtures and a fake `sf` process; REST tests use local test servers or injected transports, not a live org.

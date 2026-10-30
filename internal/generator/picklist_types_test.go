@@ -1,4 +1,4 @@
-package main
+package generator
 
 import (
 	"encoding/json"
@@ -27,7 +27,7 @@ func TestPicklistTypes(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			body := fmt.Sprintf(`{"name":"Account","fields":[{"name":"Choice","type":%q,"nillable":%t%s,"picklistValues":%s}]}`, tc.kind, tc.nullable, tc.restriction, tc.options)
-			got := string(docsGenerate(t, body)[0].data)
+			got := string(docsGenerate(t, body)[0].Data)
 			requireDocs(t, got, "Choice?: "+tc.want+";")
 			if tc.name == "mixed" {
 				requireDocs(t, got, `@picklistValue {"value":"New"}`)
@@ -51,7 +51,7 @@ func TestPicklistLiteralBoundaries(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got := string(docsGenerate(t, string(body))[0].data)
+	got := string(docsGenerate(t, string(body))[0].Data)
 	requireDocs(t, got, `Choice?: 'O\'Brien' | 'a\\b' | '*/' | 'line\r\n@type {never}' | '\u2028\u2029' | '' | 'a\u0000b' | null;`)
 	if strings.ContainsAny(got, "\r\u2028\u2029\x00") || strings.Count(got, "*/") != 3 {
 		t.Fatalf("unsafe literal/comment boundaries: %s", got)
@@ -71,7 +71,7 @@ func TestDescribeTagCollisions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got := string(docsGenerate(t, string(body))[0].data)
+	got := string(docsGenerate(t, string(body))[0].Data)
 	requireDocs(t, got, `@label readable "quoted" text`)
 	for _, line := range strings.Split(got, "\n") {
 		line = strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(line), "*"))
