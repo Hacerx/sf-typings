@@ -38,13 +38,13 @@ func requireDocs(t *testing.T, got string, wants ...string) {
 func TestDescribeDocsMetadata(t *testing.T) {
 	files := docsGenerate(t, docsDescribe)
 	got := string(files[0].data)
-	requireDocs(t, got, " * label: \"Accounts\"", " * createable: false", `future: {"a":900719925474099312345,"z":null}`,
-		`label: "Status label"`, `inlineHelpText: "Choose a status"`, "length: 0", "precision: 18", "scale: 2",
-		"updateable: true", "calculated: true", `calculatedFormula: "1 + 2"`, "defaultValue: null",
-		`referenceTo: ["Account"]`, `relationshipName: "Parent"`, `future: {"flag":false,"ratio":1.234567890123456789}`,
-		"Amount?: number;", "Status?: string | null;")
+	requireDocs(t, got, " * @label Accounts", " * @createable false", `@future {"a":900719925474099312345,"z":null}`,
+		`@label Status label`, `@inlineHelpText Choose a status`, "@length 0", "@precision 18", "@scale 2",
+		"@updateable true", "@calculated true", `@calculatedFormula 1 + 2`, "@defaultValue null",
+		`@referenceTo ["Account"]`, `@relationshipName Parent`, `@future {"flag":false,"ratio":1.234567890123456789}`, `@sfType currency`, `@metadata "name" "Amount"`,
+		"Amount?: number;", "Status?: 'Z' | 'A' | '?' | (string & {}) | null;")
 	objectDoc := strings.Split(got, "export interface Account")[0]
-	if strings.Contains(objectDoc, "fields:") || strings.Index(objectDoc, "createable:") > strings.Index(objectDoc, "future:") {
+	if strings.Contains(objectDoc, "@fields") || strings.Index(objectDoc, "@createable") > strings.Index(objectDoc, "@future") {
 		t.Fatalf("object metadata not separated/sorted: %s", objectDoc)
 	}
 	if strings.Index(got, "Amount?:") > strings.Index(got, "Status?:") {
@@ -66,9 +66,9 @@ func TestDescribeDocsMetadata(t *testing.T) {
 func TestDescribeDocsPicklists(t *testing.T) {
 	got := string(docsGenerate(t, docsDescribe)[0].data)
 	requireDocs(t, got,
-		`picklistValues[0] (active known option): {"active":true,"defaultValue":false,"label":"Last","validFor":"AA==","value":"Z"}`,
-		`picklistValues[1] (inactive option): {"active":false,"defaultValue":true,"label":"Old","value":"A"}`,
-		`picklistValues[2] (activity unspecified): {"label":"Unspecified","value":"?"}`,
+		`@picklistValue {"active":true,"defaultValue":false,"label":"Last","validFor":"AA==","value":"Z"}`,
+		`@picklistValue {"active":false,"defaultValue":true,"label":"Old","value":"A"}`,
+		`@picklistValue {"label":"Unspecified","value":"?"}`,
 		"Unrestricted picklists may accept values not listed here.",
 		"Dependent picklists require controller/validFor filtering.",
 		"Describe options are not record-type filtered; availability may vary by record type.")
@@ -78,7 +78,7 @@ func TestDescribeDocsPicklists(t *testing.T) {
 	for _, kind := range []string{"picklist", "multipicklist"} {
 		body := fmt.Sprintf(`{"name":"Account","fields":[{"name":"Choice","type":%q,"nillable":false,"restrictedPicklist":true,"picklistValues":[]}]}`, kind)
 		decl := string(docsGenerate(t, body)[0].data)
-		requireDocs(t, decl, "Choice?: string;", "picklistValues: []", "not record-type filtered")
+		requireDocs(t, decl, "Choice?: string;", "@picklistValues []", "not record-type filtered")
 		if strings.Contains(decl, "Unrestricted picklists") || strings.Contains(decl, "Dependent picklists require") {
 			t.Fatalf("incorrect context warning: %s", decl)
 		}
@@ -91,12 +91,15 @@ func TestDescribeDocsEscaping(t *testing.T) {
 	if strings.Count(got, "*/") != 2 || strings.ContainsAny(got, "\r\u2028\u2029") {
 		t.Fatalf("unsafe comment boundary: %s", got)
 	}
+	allowed := map[string]bool{"@metadata": true, "@label": true, "@future": true, "@sfType": true, "@nillable": true, "@inlineHelpText": true, "@picklistValue": true}
 	for _, line := range strings.Split(got, "\n") {
-		if strings.HasPrefix(strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(line), "*")), "@") {
-			t.Fatalf("metadata became a JSDoc tag: %q", line)
+		line = strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(line), "*"))
+		if strings.HasPrefix(line, "@") && !allowed[strings.Fields(line)[0]] {
+			t.Fatalf("unexpected JSDoc tag: %q", line)
 		}
 	}
-	requireDocs(t, got, `*\/`, `\r\n@deprecated`, `\u2028@hidden`, `\u2029`, "Name?: string;")
+	requireDocs(t, got, `@label *\/\r\n\u0040deprecated`, `@picklistValue {`)
+	requireDocs(t, got, `*\/`, `\r\n\u0040deprecated`, `\u2028\u0040hidden`, `\u2029`, "Name?: string;")
 }
 
 func TestDescribeDocsValidationAndTypes(t *testing.T) {
@@ -114,7 +117,7 @@ func TestDescribeDocsValidationAndTypes(t *testing.T) {
 	}
 	for kind, want := range map[string]string{"reference": "string", "boolean": "boolean", "long": "number", "datetime": "string", "futureType": "unknown"} {
 		body := fmt.Sprintf(`{"name":"Account","fields":[{"name":"Value","type":%q,"nillable":true,"future":null,"picklistValues":null}]}`, kind)
-		requireDocs(t, string(docsGenerate(t, body)[0].data), "Value?: "+want+" | null;", "future: null", "picklistValues: null")
+		requireDocs(t, string(docsGenerate(t, body)[0].data), "Value?: "+want+" | null;", "@future null", "@picklistValues null")
 	}
 }
 
@@ -150,7 +153,7 @@ func TestDescribeDocsRunWithDeps(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	requireDocs(t, string(decl), `label: "Accounts"`, "active known option", "Status?: string | null;")
+	requireDocs(t, string(decl), `@label Accounts`, `@sfType currency`, `@picklistValue {"active":true`, `@picklistValue {"active":false`, "Status?: 'Z' | 'A' | '?' | (string & {}) | null;", "@calculatedFormula 1 + 2", "@createable false", "@updateable true")
 	snapshotPath := filepath.Join(root, "Account.describe.json")
 	snapshot, err := os.ReadFile(snapshotPath)
 	if err != nil || string(snapshot) != string(docsGenerate(t, body)[1].data) {

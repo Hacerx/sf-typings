@@ -17,9 +17,45 @@ Object generation resolves the configured org alias using `github.com/Hacerx/sf-
 
 ## Describe metadata in your editor
 
-Each generated object interface has JSDoc for **all object metadata except `fields`**. Each property documents its complete field metadata: labels, inline help, Salesforce type, length/precision/scale, CRUD capabilities, defaults, formulas, references, dependencies, and unknown/future keys. Keys (including nested JSON keys) are sorted for deterministic output; `false`, `0`, `null`, and full numeric precision are retained. Values use JSON notation so multiline text is explicit and comment boundaries cannot inject declarations or JSDoc tags.
+Each generated object interface has JSDoc for **all object metadata except `fields`**. Each property documents its complete field metadata: labels, inline help, Salesforce type, length/precision/scale, CRUD capabilities, defaults, formulas, references, dependencies, and unknown/future keys. Keys (including nested JSON keys) are sorted for deterministic output; `false`, `0`, `null`, and full numeric precision are retained.
 
-Picklist and multipicklist properties remain `string`, not literal unions. Their comments list options in Describe order, including API value, label, active/default flags, `validFor`, and any additional metadata. Entries explicitly identify known active options, inactive options, and unspecified activity. Unrestricted lists can accept unlisted values; dependent lists require controller/`validFor` filtering. Describe options are not filtered for a particular record type and are not a runtime validation guarantee. Field optionality and nullability are unchanged.
+Metadata uses actual JSDoc tags: Salesforce `type` becomes `@sfType`, **never `@type`**. Ordinary keys use tags such as `@label`, `@nillable`, `@createable`, and `@updateable`. Simple strings are readable without surrounding quotes; arrays/objects use compact JSON. Unsafe keys and semantic JSDoc names such as `param`, `returns`, `enum`, `template`, and `name` use `@metadata "key" JSON-value` instead. Synthetic-tag collisions also use this fallback. Comment terminators, physical line separators, and embedded `@` characters are visibly escaped (for example `*\/`, `\n`, `\u2028`, `\u0040`) to prevent declaration or tag injection. Snapshots retain the original decoded values.
+
+For a restricted picklist (`type=picklist`, `restrictedPicklist=true`), all known string API values form a literal union in Describe order, deduplicated **including inactive values**. For example (other metadata and context notes omitted):
+
+```ts
+/**
+ * @label Status
+ * @sfType picklist
+ * @nillable true
+ * @createable true
+ * @updateable true
+ * @restrictedPicklist true
+ * @picklistValue {"active":true,"defaultValue":false,"label":"New","value":"New"}
+ * @picklistValue {"active":true,"defaultValue":false,"label":"Closed","value":"Closed"}
+ * @picklistValue {"active":false,"defaultValue":false,"label":"Legacy","value":"Legacy"}
+ */
+Status__c?: 'New' | 'Closed' | 'Legacy' | null;
+```
+
+Unrestricted or unspecified restriction keeps suggestions while allowing additional strings: `Status__c?: 'New' | 'Closed' | (string & {}) | null;`. Empty/unusable value lists safely fall back to `string`. Malformed entries are excluded from the type but remain fully documented. Multipicklists stay `string` because they contain semicolon-delimited combinations. Each repeated `@picklistValue` preserves the complete entry, including `active`, `defaultValue`, `validFor`, and unknown keys. Describe options are not record-type filtered; dependent lists still need controller/`validFor` filtering. These types do not guarantee runtime validity or availability.
+
+Formulas use the Salesforce result type and retain formula/CRUD/default metadata, without another request. For a currency formula:
+
+```ts
+/**
+ * @calculated true
+ * @calculatedFormula Amount__c * 1.2
+ * @createable false
+ * @defaultValue null
+ * @nillable true
+ * @sfType currency
+ * @updateable false
+ */
+Total__c?: number | null;
+```
+
+All properties remain optional for partial query projections; nillable fields additionally allow `null`. Non-picklist type mappings are unchanged.
 
 Generation time depends on local authentication, any token refresh, REST latency, and the selected objects/Apex sources. There is no fixed duration or benchmark guarantee; generating JSDoc requires no additional Salesforce requests. Treat declarations, as well as snapshots, as potentially sensitive org metadata before sharing them.
 

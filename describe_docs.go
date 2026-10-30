@@ -7,19 +7,57 @@ import (
 	"strings"
 )
 
-// docJSON retains json.Number precision and sorts nested map keys. JSON quoting
-// keeps CR/LF, Unicode line separators and apparent @tags on a single doc line.
-// Escape terminators AFTER serialization, including those in nested keys/values.
+// docJSON retains json.Number precision and sorts nested map keys. Escape
+// terminators and apparent tags only after serialization, including nested keys
+// and values. Even inline @tags can be meaningful to JSDoc consumers.
 func docJSON(value any) string {
-	encoded, _ := json.Marshal(value) // Values come exclusively from decoded JSON.
-	return strings.ReplaceAll(string(encoded), "*/", `*\/`)
+	var encoded strings.Builder
+	encoder := json.NewEncoder(&encoded)
+	encoder.SetEscapeHTML(false)
+	_ = encoder.Encode(value) // Values come exclusively from decoded JSON.
+	return strings.NewReplacer("*/", `*\/`, "\u0085", `\u0085`, "@", `\u0040`).Replace(strings.TrimSuffix(encoded.String(), "\n"))
 }
 
-func docKey(key string) string {
-	if apiName.MatchString(key) {
-		return key
+// Standard JSDoc/TypeScript tags must not give Salesforce metadata semantics.
+// Reserve our own synthetic tags too, so unknown keys cannot impersonate them.
+var semanticDocTags = func() map[string]bool {
+	tags := make(map[string]bool)
+	for _, tag := range strings.Fields(`
+		abstract access alias async augments author borrows callback class classdesc
+		constant const constructs constructor copyright default defaultvalue deprecated
+		description desc enum event example exports extends external file fileoverview
+		overview fires emits function func method generator global hideconstructor ignore
+		implements inherits inheritdoc inner instance interface kind lends license listens
+		member var memberof memberof! mixes mixin module name namespace override overload
+		package param arg argument property prop private protected public readonly requires
+		return returns satisfies see since static summary template this throws exception
+		todo tutorial type typedef variation version yields yield optional internal
+		noinheritdoc jsx jsxfrag jsximportsource jsxruntime import
+		sfType metadata picklistValue __proto__ prototype`) {
+		tags[strings.ToLower(tag)] = true
 	}
-	return docJSON(key)
+	return tags
+}()
+
+func metadataTag(key string) string {
+	if key == "type" {
+		return "sfType"
+	}
+	// Salesforce's camel-case defaultValue is not JSDoc's @defaultvalue alias.
+	if !apiName.MatchString(key) || (key != "defaultValue" && semanticDocTags[strings.ToLower(key)]) {
+		return "metadata"
+	}
+	return key
+}
+
+func docValue(value any) string {
+	encoded := docJSON(value)
+	if s, ok := value.(string); ok && s != "" {
+		// Keep strings readable while visibly escaping all physical separators,
+		// control characters and backslashes. Only remove JSON's quote escapes.
+		return strings.ReplaceAll(encoded[1:len(encoded)-1], `\"`, `"`)
+	}
+	return encoded
 }
 
 // writeDescribeDocs documents the full raw metadata, not a fixed subset of the
@@ -33,28 +71,25 @@ func writeDescribeDocs(text *strings.Builder, indent string, metadata map[string
 	}
 	sort.Strings(keys)
 	fmt.Fprintln(text, indent+"/**")
-	line := func(value string) { fmt.Fprintln(text, indent+" * "+value) }
+	line := func(value string) {
+		fmt.Fprintln(text, indent+" * "+strings.ReplaceAll(value, "*/", `*\/`))
+	}
 	for _, key := range keys {
 		value := metadata[key]
 		if !object && key == "picklistValues" {
 			if entries, ok := value.([]any); ok && len(entries) > 0 {
-				for i, entry := range entries {
-					activity := "activity unspecified"
-					if option, ok := entry.(map[string]any); ok {
-						if active, ok := option["active"].(bool); ok {
-							if active {
-								activity = "active known option"
-							} else {
-								activity = "inactive option"
-							}
-						}
-					}
-					line(fmt.Sprintf("picklistValues[%d] (%s): %s", i, activity, docJSON(entry)))
+				for _, entry := range entries {
+					line("@picklistValue " + docJSON(entry))
 				}
 				continue
 			}
 		}
-		line(docKey(key) + ": " + docJSON(value))
+		tag := metadataTag(key)
+		if tag == "metadata" {
+			line("@metadata " + docJSON(key) + " " + docJSON(value))
+		} else {
+			line("@" + tag + " " + docValue(value))
+		}
 	}
 	if !object && (metadata["type"] == "picklist" || metadata["type"] == "multipicklist") {
 		line("Describe options are not record-type filtered; availability may vary by record type.")
@@ -64,7 +99,7 @@ func writeDescribeDocs(text *strings.Builder, indent string, metadata map[string
 		if metadata["dependentPicklist"] == true || metadata["controllerName"] != nil && metadata["controllerName"] != "" {
 			line("Dependent picklists require controller/validFor filtering.")
 		}
-		line("Options are documentation, not a literal union or a guarantee of runtime validity.")
+		line("Known options include inactive entries and do not guarantee runtime validity.")
 	}
 	fmt.Fprintln(text, indent+" */")
 }

@@ -11,6 +11,12 @@ S6: "El token en lugar de con sf org display se debe obtener con \"sf org auth s
 
 S7: "En cuánto tiempo se genera el fichero? Quiero que la interfaz incluya información útil, todo lo posible que devuelva el getDescribe como comentarios de jsdoc y en el caso de los picklistvalues que aparezcan los valores válidos"
 
+S8: "Deberían aparecer los valores con \"@\" para que se puedan interpretar en formato jsdoc"
+S9: "En el caso de los picklist values debería aparecer Status__c: 'New' | 'Closed' | 'Legacy' | null si es nullable"
+S10: "Utiliza sfType en ese caso"
+S11: "En el caso de un campo formula cómo se vería?" / "En el picklist no aparece createable y updateable"
+S12: "Impleméntalo"
+
 ## Tasks
 T1 [S1,S4] Implement sf-typings Go CLI config and Salesforce object Describe declaration generation with public tests; route: bounded worker then inline correction; commit: 4f9a9b7.
 T2 [S1-S3] Implement local .cls Apex @AuraEnabled method declaration generation using apexfmt/parser with public tests; route: bounded worker plus inline correction and independent structural verifier; commit: f9993e6.
@@ -18,6 +24,8 @@ T4 [S1,S5-S6] Replace `sf sobject describe` with authenticated direct REST Descr
 T3 [S1-S5] Document independent CLI workflow and prove generated declarations type-check in an isolated TypeScript consumer without editing the original LWC repository; route: inline; commit: pending.
 
 T5 [S7] Generate deterministic object/field JSDoc from Describe metadata, including known picklist options and context limitations, without narrowing existing property types; route: bounded worker due context backstop; commit: f9869af (verified complete).
+
+T6 [S7-S12] Emit structured JSDoc tags (`@sfType`, other plain metadata tags) and restricted/unrestricted picklist unions, preserving optionality, nullability, multipicklist strings, formulas, and complete metadata; route: bounded worker due context backstop; commit: pending.
 
 ## Log
 L1: Entonces creo que mejor sería cambiar de rumbo y optar por otro tipo de solución, podemos crear un cli en go que permita hacer un describe y obtener todos los datos de los objetos (con un fichero de configuración que permita filtrar qué objetos queremos obtener) o también generar .d.ts a partir de los métodos de apex, puesto que el tipado de sf solo incluye "any"
@@ -49,3 +57,13 @@ L27: User: Prueba ahora. Authorized one fresh live Account Describe on dev, not 
 L28: En cuánto tiempo se genera el fichero? Quiero que la interfaz incluya información útil, todo lo posible que devuelva el getDescribe como comentarios de jsdoc y en el caso de los picklistvalues que aparezcan los valores válidos
 L29: Design: preserve complete object metadata except nested fields, which are documented on each property. Retain unknown keys and false/zero/null, full numeric precision, known picklist activity/labels/defaults/dependencies and contextual limitations. Keep existing string/optional/nullable types. Escape comment terminators, line breaks, Unicode separators and accidental tags. No auth changes or additional Salesforce requests. The earlier 0.64s probe includes auth/REST/in-memory generation, not disk writing or a benchmark.
 L30: T5/S7 RED new metadata/picklist tests failed before implementation; focused GREEN passed after complete raw-map generation and safe JSDoc rendering. Fake-HTTP runWithDeps assertions cover exact stdout/stderr/exit, snapshots unchanged and prior-output preservation on rejected Describe. Full `go test ./... -count=1` passed (122.608s); focused existing Apex/token tests and CGO_ENABLED=0 build passed. Isolated TypeScript compiler parsed ordinary and hostile generated .d.ts comments. ASSESS returned native medium, reviewDue=false, no independent verifier required. No native review started for this metadata unit and no live request or auth access performed. Previous auth review remains blocked separately. Risk: none for this metadata-only code unit; unrelated auth/Apex logic unchanged.
+L31: Deberían aparecer los valores con "@" para que se puedan interpretar en formato jsdoc
+L32: Antes de la implementación dime qué datos incluirías y el formato final para poder decidir antes de implementar
+L33: En el caso de los picklist values debería aparecer Status__c: 'New' | 'Closed' | 'Legacy' | null si es nullable
+L34: Perfecto, ahora cómo quedaría?
+L35: Por qué se agrega el prefijo sf a todo en lugar de usar @label o @tpe que ya exsiten en jsdoc?
+L36: Utiliza sfType en ese caso
+L37: En el caso de un campo formula cómo se vería?
+L38: En el picklist no aparece createable y updateable
+L39: Impleméntalo
+L40: T6 implements agreed plain metadata @tags with @sfType replacing semantic @type, repeated @picklistValue, complete formula/CRUD data, and safe @metadata fallback for colliding or unsafe keys. Restricted picklists use ordered deduplicated literal unions including inactive values, open picklists additionally allow (string & {}), nullable adds null, properties remain optional, multipicklists remain string. Worker observed focused RED/GREEN for tags/types and injection boundaries; no auth changes/dependencies/live requests. Parent isolated output .tmp/final-jsdoc/Account.d.ts passed real TypeScript consumer tests for restricted/open values, nullability, formulas, multipicklists and hostile literals; TS AST recognized expected CRUD/formula/custom tags without injected semantic tags. Native ASSESS medium, reviewDue=false, no independent verifier required. Full Go suite job-4 passed (`go test ./... -count=1`, 126.115s, exit 0). Focused tests, real TypeScript semantic/AST checks and Go build passed. No live request or token access performed. Risk: none for this requested metadata/type-generation change; auth and Apex behavior remain untouched.

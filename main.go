@@ -374,7 +374,7 @@ func generate(name string, raw []byte, snapshots bool) ([]output, error) {
 		if f["nillable"] == true {
 			nullable = " | null"
 		}
-		fmt.Fprintf(&text, "  %s?: %s%s;\n", fieldName, tsType(f["type"].(string)), nullable)
+		fmt.Fprintf(&text, "  %s?: %s%s;\n", fieldName, fieldType(f), nullable)
 	}
 	fmt.Fprintln(&text, "}")
 	files := []output{{name + ".d.ts", []byte(text.String())}}
