@@ -52,9 +52,15 @@ Formulas use the Salesforce result type and retain formula/CRUD/default metadata
 Total__c?: number | null;
 ```
 
-Lookups retain nonempty targets and nonblank relationship names:
+## Parent relationships
+
+Configured objects are **roots**, not a fetch allowlist. The CLI sequentially describes every transitive parent used by a generated relationship, even when it is not configured. Each unique object is fetched once per attempt; self-relations and mutual cycles terminate normally. The reported object count includes discovered parents. `-snapshots` writes a complete snapshot for **every** discovered object, without pruning relationship or other metadata. No child relationships are generated or followed, and no records are retrieved.
+
+Lookups keep their original ID field and concise metadata JSDoc. When Describe supplies a nonempty `relationshipName` and nonempty `referenceTo`, an additional typed parent property uses that exact name—not a guessed suffix. For example, `ParentId` can produce `Parent`, and `Customer__c` can produce `Customer__r`. Target types come only from Describe and use type-only sibling imports:
 
 ```ts
+import type { Account as SFParent1 } from "./Account";
+
 /**
  * @label Parent
  * @sfType reference
@@ -64,11 +70,13 @@ Lookups retain nonempty targets and nonblank relationship names:
  * @relationshipName Parent
  */
 ParentId?: string | null;
+/** Parent relationship via ParentId; available when queried. */
+Parent?: SFParent1 | null;
 ```
 
-Polymorphic lookups use, for example, `@referenceTo ["Account","Contact"]`. All properties remain optional for partial query projections; nillable fields additionally allow `null`. Type mappings are unchanged.
+Polymorphic lookups use, for example, `@referenceTo ["Account","Contact"]`, and the parent type is a sorted, deduplicated union of the corresponding imported types. Self-relations use the current interface without a self-import; type-only imports permit mutual cycles. Import aliases avoid object/property name collisions. All properties remain optional for partial query projections; the parent additionally allows `null` exactly when its reference ID is nillable. Existing ID, picklist and formula types are unchanged. Missing relationship names or empty targets generate no parent property and cause no target fetch. Malformed identifiers and conflicting relationship/property names fail safely before publication.
 
-Generation time depends on local authentication, any token refresh, REST latency, and the selected objects/Apex sources. There is no fixed duration or benchmark guarantee; generating JSDoc requires no additional Salesforce requests. Treat declarations, as well as snapshots, as potentially sensitive org metadata before sharing them.
+Generation time depends on local authentication, any token refresh, REST latency, and all discovered objects/Apex sources. The graph shares the existing **35-second overall budget**, including authentication and the one permitted token retry; each request is also bounded. Large graphs can time out. REST version discovery happens once per attempt. A local-token 401 discards the entire in-memory graph and retries from the roots with fresh visited state. Inaccessible/unknown parents, permission errors, timeouts, and malformed metadata fail the run before publishing any files, leaving prior outputs untouched. This pre-publication guarantee does not promise filesystem transactionality if output saving itself fails. There is no fixed duration or benchmark guarantee; JSDoc rendering itself requires no additional Salesforce requests. Treat declarations, as well as snapshots, as potentially sensitive org metadata before sharing them.
 
 ## Local Apex declarations
 
@@ -92,6 +100,6 @@ internal/
   testutil/             # fake sf subprocess support for isolated package tests
 ```
 
-The CLI composes these packages using credential resolver functions and an injectable HTTP client. REST visits complete Describe responses through a callback; it does not depend on declaration rendering. The generator returns in-memory files without authentication or network access. The CLI publishes only after every configured object and Apex source succeeds. No additional command framework or duplicate executable is needed.
+The CLI composes these packages using credential resolver functions and an injectable HTTP client. REST visits complete Describe responses through a callback; it does not depend on declaration rendering. The generator returns in-memory files without authentication or network access. The CLI publishes only after every configured/discovered object and Apex source succeeds. No additional command framework or duplicate executable is needed.
 
 Run the public CLI and package tests from this repository with `go test ./...`. Public CLI tests build the actual root executable even though the tests live in `internal/cli`. Authentication tests use synthetic local fixtures and a fake `sf` process; REST tests use local test servers or injected transports, not a live org.

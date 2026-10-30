@@ -54,12 +54,12 @@ func objectOutputs(ctx context.Context, alias string, names []string, snapshots 
 // Collect in memory on each attempt; a failed or stale-token attempt is never published.
 func restOutputs(ctx context.Context, names []string, snapshots bool, creds auth.Credentials, client *http.Client) ([]generator.File, error) {
 	var files []generator.File
-	err := salesforce.Describe(ctx, names, creds, client, func(name string, raw []byte) error {
-		generated, err := generator.Generate(name, raw, snapshots)
+	err := salesforce.DescribeGraph(ctx, names, creds, client, func(name string, raw []byte) ([]string, error) {
+		generated, parents, err := generator.GenerateWithParents(name, raw, snapshots)
 		if err == nil {
 			files = append(files, generated...)
 		}
-		return err
+		return parents, err
 	})
 	if err != nil {
 		return nil, err

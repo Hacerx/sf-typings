@@ -77,6 +77,23 @@ func IsUnauthorized(err error) bool {
 // Describe visits each complete Describe response in request order. The caller
 // owns generation and publication; callback failures stop further requests.
 func Describe(ctx context.Context, names []string, creds auth.Credentials, httpClient *http.Client, visit func(string, []byte) error) error {
+	return DescribeGraph(ctx, names, creds, httpClient, func(name string, raw []byte) ([]string, error) {
+		return nil, visit(name, raw)
+	})
+}
+
+var objectIdentifier = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_]*$`)
+
+// DescribeGraph performs sequential breadth-first discovery. The visitor owns
+// relationship validation and returns only parents that it can generate. Each
+// attempt has its own queue/visited state and discovers the REST version once.
+func DescribeGraph(ctx context.Context, names []string, creds auth.Credentials, httpClient *http.Client, visit func(string, []byte) ([]string, error)) error {
+	queue := append([]string(nil), names...)
+	for _, name := range queue {
+		if !objectIdentifier.MatchString(name) {
+			return fmt.Errorf("invalid object name")
+		}
+	}
 	if httpClient == nil {
 		httpClient = &http.Client{Timeout: 15 * time.Second}
 	}
@@ -118,7 +135,14 @@ func Describe(ctx context.Context, names []string, creds auth.Credentials, httpC
 	if version == "" {
 		return fmt.Errorf("invalid REST versions")
 	}
-	for _, name := range names {
+	seen := make(map[string]bool)
+	for len(queue) > 0 {
+		name := queue[0]
+		queue = queue[1:]
+		if seen[name] {
+			continue
+		}
+		seen[name] = true
 		raw, err := restJSON(ctx, &client, base, "/services/data/v"+version+"/sobjects/"+name+"/describe", creds.Token)
 		if err != nil {
 			return fmt.Errorf("REST Describe for %s: %w", name, err)
@@ -130,9 +154,17 @@ func Describe(ctx context.Context, names []string, creds auth.Credentials, httpC
 		if err != nil {
 			return fmt.Errorf("invalid REST response")
 		}
-		if err := visit(name, wrapped); err != nil {
+		parents, err := visit(name, wrapped)
+		if err != nil {
 			return err
 		}
+		// Validate the entire returned batch before requesting any target.
+		for _, parent := range parents {
+			if !objectIdentifier.MatchString(parent) {
+				return fmt.Errorf("invalid object name")
+			}
+		}
+		queue = append(queue, parents...)
 	}
 	return nil
 }
