@@ -1,6 +1,7 @@
 package salesforce
 
 import (
+	"container/heap"
 	"context"
 	"encoding/json"
 	"errors"
@@ -84,15 +85,65 @@ func Describe(ctx context.Context, names []string, creds auth.Credentials, httpC
 
 var objectIdentifier = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_]*$`)
 
-// DescribeGraph performs sequential breadth-first discovery. The visitor owns
-// relationship validation and returns only parents that it can generate. Each
-// attempt has its own queue/visited state and discovers the REST version once.
+// DescribeGraph retains breadth-first request order for unweighted edges.
 func DescribeGraph(ctx context.Context, names []string, creds auth.Credentials, httpClient *http.Client, visit func(string, []byte) ([]string, error)) error {
-	queue := append([]string(nil), names...)
-	for _, name := range queue {
+	return DescribeGraphLevels(ctx, names, creds, httpClient, func(node GraphNode, raw []byte) ([]GraphNode, error) {
+		targets, err := visit(node.Name, raw)
+		var edges []GraphNode
+		for _, name := range targets {
+			edges = append(edges, GraphNode{name, node.Level + 1})
+		}
+		return edges, err
+	})
+}
+
+// GraphNode carries an absolute discovery level. Roots always start at one.
+// Visitors may return same-level or higher-level edges, never decreasing ones.
+type GraphNode struct {
+	Name  string
+	Level int
+}
+
+type graphEntry struct {
+	GraphNode
+	order int
+}
+type graphQueue []graphEntry
+
+func (q graphQueue) Len() int { return len(q) }
+func (q graphQueue) Less(i, j int) bool {
+	return q[i].Level < q[j].Level || q[i].Level == q[j].Level && q[i].order < q[j].order
+}
+func (q graphQueue) Swap(i, j int)   { q[i], q[j] = q[j], q[i] }
+func (q *graphQueue) Push(value any) { *q = append(*q, value.(graphEntry)) }
+func (q *graphQueue) Pop() any {
+	last := len(*q) - 1
+	value := (*q)[last]
+	*q = (*q)[:last]
+	return value
+}
+
+// DescribeGraphLevels visits each object once, at its lowest reachable level.
+// Stable lowest-level-first scheduling finalizes only after all possible shorter
+// paths, including zero-cost hops. All traversal state is local to this attempt.
+// The caller owns edge semantics; transport validates each complete next batch.
+func DescribeGraphLevels(ctx context.Context, names []string, creds auth.Credentials, httpClient *http.Client, visit func(GraphNode, []byte) ([]GraphNode, error)) error {
+	queue := &graphQueue{}
+	best := make(map[string]int)
+	order := 0
+	enqueue := func(node GraphNode) {
+		if level, exists := best[node.Name]; exists && level <= node.Level {
+			return
+		}
+		best[node.Name] = node.Level
+		heap.Push(queue, graphEntry{node, order})
+		order++
+	}
+	for _, name := range names {
 		if !objectIdentifier.MatchString(name) {
 			return fmt.Errorf("invalid object name")
 		}
+		enqueue(GraphNode{name, 1})
 	}
 	if httpClient == nil {
 		httpClient = &http.Client{Timeout: 15 * time.Second}
@@ -136,10 +187,10 @@ func DescribeGraph(ctx context.Context, names []string, creds auth.Credentials, 
 		return fmt.Errorf("invalid REST versions")
 	}
 	seen := make(map[string]bool)
-	for len(queue) > 0 {
-		name := queue[0]
-		queue = queue[1:]
-		if seen[name] {
+	for queue.Len() > 0 {
+		node := heap.Pop(queue).(graphEntry).GraphNode
+		name := node.Name
+		if seen[name] || best[name] != node.Level {
 			continue
 		}
 		seen[name] = true
@@ -154,17 +205,22 @@ func DescribeGraph(ctx context.Context, names []string, creds auth.Credentials, 
 		if err != nil {
 			return fmt.Errorf("invalid REST response")
 		}
-		parents, err := visit(name, wrapped)
+		edges, err := visit(node, wrapped)
 		if err != nil {
 			return err
 		}
 		// Validate the entire returned batch before requesting any target.
-		for _, parent := range parents {
-			if !objectIdentifier.MatchString(parent) {
+		for _, edge := range edges {
+			if !objectIdentifier.MatchString(edge.Name) {
 				return fmt.Errorf("invalid object name")
 			}
+			if edge.Level < node.Level {
+				return fmt.Errorf("invalid graph level")
+			}
 		}
-		queue = append(queue, parents...)
+		for _, edge := range edges {
+			enqueue(edge)
+		}
 	}
 	return nil
 }
