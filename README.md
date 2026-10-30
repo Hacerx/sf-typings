@@ -8,10 +8,35 @@ From this repository's root:
 
 ```sh
 go run . -help
-go run . -config config.json -out generated -snapshots
+go run . -config config.json
+# Override JSON options explicitly:
+go run . -config config.json -out generated -snapshots -all-children=false
+# Opt into recursive child discovery (potentially a much larger graph):
+go run . -config config.json -all-children
 ```
 
-Copy `config.example.json` to `config.json` and choose the objects you need. For Apex classes, add `"apexSources": ["/path/to/your/sfdx-project/force-app/main/default/classes"]` (a file or recursively scanned directory). Paths in `apexSources` are resolved relative to **the CLI working directory**, not the config file. For an Apex-only run use `{"apexSources":["/path/to/your/classes"]}`; `sf` and an org alias are not needed then. At least one object or Apex source is required. `-config` and `-out` are required.
+Copy `config.example.json` to `config.json` and choose the objects you need. For Apex classes, add `"apexSources": ["/path/to/your/sfdx-project/force-app/main/default/classes"]` (a file or recursively scanned directory). Paths in `apexSources` are resolved relative to **the CLI working directory**, not the config file. For an Apex-only run use `{"apexSources":["/path/to/your/classes"]}`; `sf` and an org alias are not needed then. At least one object or Apex source is required. `-config` is required; a nonempty output directory must come from JSON `out` or `-out`.
+
+All runtime options can be set in the strict JSON configuration:
+
+```json
+{
+  "orgAlias": "dev",
+  "objects": ["Account"],
+  "apexSources": ["classes"],
+  "out": "generated",
+  "snapshots": false,
+  "allChildren": false
+}
+```
+
+| CLI override | JSON field | Default |
+| --- | --- | --- |
+| `-out generated` | `out` (string) | Required from either source |
+| `-snapshots` | `snapshots` (boolean) | `false` |
+| `-all-children` | `allChildren` (boolean) | `false` |
+
+Only **explicitly supplied** flags override JSON: `-snapshots=false -all-children=false` disables configured true values. `-out ""` overrides the configured path and fails, rather than falling back. Output paths, like Apex source paths, are relative to the CLI working directory. Unknown keys and wrong option types are rejected before authentication, requests, or output. `-config` and `-help` select/bootstrap the run and are not JSON fields. Existing flag-only execution options remain supported, for example `go run . -config config.json -out generated -snapshots`.
 
 Object generation resolves the configured org alias using `github.com/Hacerx/sf-auth-decrypt-go/authdecrypt` and uses its decrypted access token in memory for authenticated Salesforce REST sObject Describe. If the local org has no instance URL or cannot be resolved, the CLI obtains **only** `instanceUrl` from `sf org display --target-org ALIAS --json` and ignores any display access token. It validates the HTTPS Salesforce host before obtaining the token from `sf org auth show-access-token -o ALIAS --no-prompt --json`; if URL lookup or validation fails, it does not request a token or send a bearer. The token command returns only `accessToken`. If a local token is missing or receives HTTP 401 at version discovery or Describe, the CLI obtains that token once, retaining and revalidating the previously trusted local URL for one REST attempt or retry. No `sf org display` occurs on a local-token 401. It never retries another error or retries a token already obtained from the CLI. The CLI never calls `sf sobject describe`. It discovers the highest numeric REST API version from `/services/data/`, requires an HTTPS Salesforce instance host, refuses redirects, and bounds request time and response size. Credential and network failures are reported without raw secret-bearing error text. A live Account generation on `dev` succeeded after the token-command correction. A separate authorized diagnostic confirmed local credential resolution and REST HTTP 200 with zero CLI fallback calls; see `odd/tasks/sf-typings.md`. Those observations are not a guarantee that cached tokens remain valid. `-snapshots` additionally writes the complete per-object Describe result as machine-readable `Object.describe.json` alongside the JSDoc in `Object.d.ts`. Treat snapshots as potentially sensitive org metadata; review generated output before distributing it. The CLI does not fetch records. Names and Describe responses are validated; generated object fields are optional because a SOQL projection can omit them, and nillable fields additionally allow `null`. Unknown Salesforce field types become `unknown`. These declarations do not guarantee field access or query selection.
 
@@ -52,9 +77,28 @@ Formulas use the Salesforce result type and retain formula/CRUD/default metadata
 Total__c?: number | null;
 ```
 
-## Parent relationships
+## Relationship graph and Apex child collections
 
-Configured objects are **roots**, not a fetch allowlist. The CLI sequentially describes every transitive parent used by a generated relationship, even when it is not configured. Each unique object is fetched once per attempt; self-relations and mutual cycles terminate normally. The reported object count includes discovered parents. `-snapshots` writes a complete snapshot for **every** discovered object, without pruning relationship or other metadata. No child relationships are generated or followed, and no records are retrieved.
+Configured objects are **roots**, not a fetch allowlist. By default, roots emit child collections and discover their direct child targets. Automatically discovered objects emit and discover **parents only**, unless they are also explicitly configured roots. Parent traversal stays fully transitive in both modes. Scope uses configured membership, not the reason or order an object was discovered.
+
+`-all-children` (or JSON `"allChildren": true`) enables child collections and child discovery for **every** visited object. This can expand the graph substantially; it is opt-in. Each unique parent/child target is fetched once per attempt; duplicate targets, self-relations and mutual cycles terminate normally. Traversal is sequential and deterministic. The reported object count includes **all** emitted objects. `-snapshots` (or JSON `"snapshots": true`) writes a complete snapshot for **every** discovered object, without pruning ignored relationship metadata. No records are retrieved.
+
+Named, visible Describe `childRelationships` generate optional **Apex-style arrays**, using the exact `relationshipName` and `childSObject`, never guessed suffixes:
+
+```ts
+import type { Contact as SFParent1 } from "./Contact";
+
+export interface Account {
+  /** Child relationship via AccountId; available when queried. */
+  Contacts?: SFParent1[];
+  /** Child relationship; available when queried. */
+  ChildAccounts?: Account[];
+}
+```
+
+These are `Contact[]` collections, **not** REST query envelopes with `totalSize`, `done`, or `records`. Arrays do not acquire an invented `null` union; omission represents an unselected relationship. Missing/null/empty child metadata emits no children. Unnamed relationships (including event entries) and entries marked `deprecatedAndHidden: true` are ignored. When present, the actual child `field` is documented succinctly. Used malformed identifiers, metadata shapes, and field/parent/child property collisions fail before imports, target requests, or publication. Parent and child relationships share stable type-only imports; self-relations need no import.
+
+### Parent properties
 
 Lookups keep their original ID field and concise metadata JSDoc. When Describe supplies a nonempty `relationshipName` and nonempty `referenceTo`, an additional typed parent property uses that exact name—not a guessed suffix. For example, `ParentId` can produce `Parent`, and `Customer__c` can produce `Customer__r`. Target types come only from Describe and use type-only sibling imports:
 
@@ -76,7 +120,7 @@ Parent?: SFParent1 | null;
 
 Polymorphic lookups use, for example, `@referenceTo ["Account","Contact"]`, and the parent type is a sorted, deduplicated union of the corresponding imported types. Self-relations use the current interface without a self-import; type-only imports permit mutual cycles. Import aliases avoid object/property name collisions. All properties remain optional for partial query projections; the parent additionally allows `null` exactly when its reference ID is nillable. Existing ID, picklist and formula types are unchanged. Missing relationship names or empty targets generate no parent property and cause no target fetch. Malformed identifiers and conflicting relationship/property names fail safely before publication.
 
-Generation time depends on local authentication, any token refresh, REST latency, and all discovered objects/Apex sources. The graph shares the existing **35-second overall budget**, including authentication and the one permitted token retry; each request is also bounded. Large graphs can time out. REST version discovery happens once per attempt. A local-token 401 discards the entire in-memory graph and retries from the roots with fresh visited state. Inaccessible/unknown parents, permission errors, timeouts, and malformed metadata fail the run before publishing any files, leaving prior outputs untouched. This pre-publication guarantee does not promise filesystem transactionality if output saving itself fails. There is no fixed duration or benchmark guarantee; JSDoc rendering itself requires no additional Salesforce requests. Treat declarations, as well as snapshots, as potentially sensitive org metadata before sharing them.
+Generation time depends on local authentication, any token refresh, REST latency, and all discovered objects/Apex sources. The graph shares the existing **35-second overall budget**, including authentication and the one permitted token retry; each request is also bounded. Large graphs can time out. REST version discovery happens once per attempt. A local-token 401 discards the entire in-memory graph and retries from the roots with fresh visited state. Inaccessible/unknown parent or child targets, permission errors, timeouts, and malformed metadata fail the run before publishing any files, leaving prior outputs untouched. This pre-publication guarantee does not promise filesystem transactionality if output saving itself fails. There is no fixed duration or benchmark guarantee; JSDoc rendering itself requires no additional Salesforce requests. Treat declarations, as well as snapshots, as potentially sensitive org metadata before sharing them.
 
 ## Local Apex declarations
 

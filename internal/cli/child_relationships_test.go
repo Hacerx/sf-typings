@@ -1,0 +1,181 @@
+package cli
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"reflect"
+	"strings"
+	"testing"
+
+	"sf-typings/internal/auth"
+)
+
+func TestChildGraphRunWithDeps(t *testing.T) {
+	for _, tc := range []struct {
+		name                              string
+		flags                             []string
+		recursive, snapshots, rootContact bool
+		bad, badObject                    string
+		retry                             bool
+		want                              []string
+	}{
+		{name: "default", want: []string{"Account", "Contact", "User", "Team"}},
+		{name: "recursive flag", flags: []string{"-all-children", "-snapshots"}, want: []string{"Account", "Contact", "User", "Note", "Extra", "Team"}},
+		{name: "recursive JSON", recursive: true, snapshots: true, want: []string{"Account", "Contact", "User", "Note", "Extra", "Team"}},
+		{name: "explicit false", recursive: true, snapshots: true, flags: []string{"-all-children=false", "-snapshots=false"}, want: []string{"Account", "Contact", "User", "Team"}},
+		{name: "configured child root", rootContact: true, want: []string{"Account", "Contact", "User", "Note", "Team"}},
+		{name: "retry child graph", retry: true, want: []string{"Account", "Contact", "User", "Team"}},
+		{name: "target injection", bad: `[{"relationshipName":"Contacts","childSObject":"Contact"},{"relationshipName":"Bad","childSObject":"Contact/../../User"}]`, want: []string{"Account"}},
+		{name: "parent collision", bad: `[{"relationshipName":"Owner","childSObject":"Contact"}]`, want: []string{"Account"}},
+		{name: "late child failure", recursive: true, snapshots: true, badObject: "Contact", bad: `[{"relationshipName":"Notes","childSObject":"../Note"}]`, want: []string{"Account", "Contact"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root := t.TempDir()
+			dest := filepath.Join(root, "output")
+			if err := os.MkdirAll(dest, 0700); err != nil {
+				t.Fatal(err)
+			}
+			for _, name := range []string{"Account.d.ts", "Account.describe.json"} {
+				if err := os.WriteFile(filepath.Join(dest, name), []byte("original"), 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			objects := []string{"Account"}
+			if tc.rootContact {
+				objects = append(objects, "Contact")
+			}
+			config := map[string]any{"orgAlias": "dev", "objects": objects, "out": dest, "allChildren": tc.recursive, "snapshots": tc.snapshots}
+			raw, _ := json.Marshal(config)
+			cfg := filepath.Join(root, "config.json")
+			if err := os.WriteFile(cfg, raw, 0600); err != nil {
+				t.Fatal(err)
+			}
+			accountChildren := `[{"relationshipName":"Contacts","childSObject":"Contact"},{"relationshipName":"ChildAccounts","childSObject":"Account"},{"relationshipName":null,"childSObject":"Event"},{"relationshipName":"Old","childSObject":"OldEvent","deprecatedAndHidden":true}]`
+			if tc.bad != "" && tc.badObject == "" {
+				accountChildren = tc.bad
+			}
+			metadata := map[string]string{
+				"Account": `{"name":"Account","fields":[{"name":"OwnerId","type":"reference","nillable":false,"relationshipName":"Owner","referenceTo":["User"]},{"name":"CustomerId","type":"reference","nillable":true,"relationshipName":"Customer","referenceTo":["Contact"]}],"childRelationships":` + accountChildren + `}`,
+				"Contact": `{"name":"Contact","fields":[{"name":"AccountId","type":"reference","nillable":true,"relationshipName":"Account","referenceTo":["Account"]}],"childRelationships":[{"relationshipName":"Notes","childSObject":"Note"}]}`,
+				"User":    `{"name":"User","fields":[{"name":"TeamId","type":"reference","nillable":false,"relationshipName":"Team","referenceTo":["Team"]}],"childRelationships":[{"relationshipName":"Extras","childSObject":"Extra"}]}`,
+				"Extra":   `{"name":"Extra","fields":[]}`,
+				"Team":    `{"name":"Team","fields":[]}`,
+				"Note":    `{"name":"Note","fields":[],"childRelationships":[{"relationshipName":"Contacts","childSObject":"Contact"}]}`,
+			}
+			if tc.badObject == "Contact" {
+				metadata["Contact"] = `{"name":"Contact","fields":[],"childRelationships":` + tc.bad + `}`
+			}
+			var requests []string
+			versions, fallbacks := 0, 0
+			failed := false
+			server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path == "/services/data/" {
+					versions++
+					io.WriteString(w, `[{"version":"60.0"}]`)
+					return
+				}
+				name := strings.TrimSuffix(strings.TrimPrefix(r.URL.Path, "/services/data/v60.0/sobjects/"), "/describe")
+				requests = append(requests, name)
+				if tc.retry && name == "Contact" && !failed {
+					failed = true
+					w.WriteHeader(401)
+					return
+				}
+				body, ok := metadata[name]
+				if !ok {
+					t.Errorf("unexpected request %s", r.URL.Path)
+					w.WriteHeader(404)
+					return
+				}
+				io.WriteString(w, body)
+			}))
+			defer server.Close()
+			transport := server.Client().Transport
+			client := &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+				if r.URL.Host != "sample.my.salesforce.com" || r.Method != "GET" || (r.Header.Get("Authorization") != "Bearer local" && r.Header.Get("Authorization") != "Bearer fresh") {
+					t.Errorf("unexpected request %s", r.URL)
+				}
+				clone := r.Clone(r.Context())
+				clone.URL.Host = strings.TrimPrefix(server.URL, "https://")
+				return transport.RoundTrip(clone)
+			})}
+			local := func(context.Context, string) (auth.Credentials, error) {
+				return auth.Credentials{"local", "https://sample.my.salesforce.com"}, nil
+			}
+			fallback := func(context.Context, string) (auth.Credentials, error) {
+				fallbacks++
+				return auth.Credentials{Token: "fresh"}, nil
+			}
+			var out, errs strings.Builder
+			args := append([]string{"-config", cfg}, tc.flags...)
+			code := runWithDeps(args, &out, &errs, local, fallback, client)
+			wantRequests := tc.want
+			wantVersions := 1
+			if tc.retry {
+				wantRequests = append([]string{"Account", "Contact"}, tc.want...)
+				wantVersions = 2
+			}
+			if !reflect.DeepEqual(requests, wantRequests) || versions != wantVersions || fallbacks != wantVersions-1 {
+				t.Fatalf("requests=%v versions=%d fallback=%d stderr=%q", requests, versions, fallbacks, errs.String())
+			}
+			if tc.bad != "" {
+				invalidObject := tc.badObject
+				if invalidObject == "" {
+					invalidObject = "Account"
+				}
+				if code != 1 || out.String() != "" || errs.String() != "sf-typings: invalid describe for "+invalidObject+"\n" {
+					t.Fatalf("exit=%d out=%q err=%q", code, out.String(), errs.String())
+				}
+				for _, name := range []string{"Account.d.ts", "Account.describe.json"} {
+					assertUnchanged(t, filepath.Join(dest, name))
+				}
+				entries, _ := os.ReadDir(dest)
+				if len(entries) != 2 {
+					t.Fatal("partial output")
+				}
+				return
+			}
+			if code != 0 || out.String() != fmt.Sprintf("Generated %d object(s).\n", len(tc.want)) || errs.String() != "" {
+				t.Fatalf("exit=%d out=%q err=%q", code, out.String(), errs.String())
+			}
+			recursive := tc.recursive || tc.name == "recursive flag"
+			snapshots := tc.snapshots || tc.name == "recursive flag"
+			if tc.name == "explicit false" {
+				recursive = false
+				snapshots = false
+			}
+			for _, name := range tc.want {
+				data, err := os.ReadFile(filepath.Join(dest, name+".d.ts"))
+				if err != nil {
+					t.Fatal(err)
+				}
+				if name == "Contact" && strings.Contains(string(data), "Notes?:") != (recursive || tc.rootContact) {
+					t.Fatalf("Contact=%s", data)
+				}
+				if name == "User" && strings.Contains(string(data), "Extras?:") != recursive {
+					t.Fatalf("User=%s", data)
+				}
+				if snapshots {
+					data, err := os.ReadFile(filepath.Join(dest, name+".describe.json"))
+					if err != nil || !json.Valid(data) {
+						t.Fatalf("snapshot %s: %s %v", name, data, err)
+					}
+				} else if name == "Account" {
+					assertUnchanged(t, filepath.Join(dest, "Account.describe.json"))
+				} else if _, err := os.Stat(filepath.Join(dest, name+".describe.json")); !os.IsNotExist(err) {
+					t.Fatalf("unexpected snapshot %s", name)
+				}
+			}
+			account, _ := os.ReadFile(filepath.Join(dest, "Account.d.ts"))
+			if !strings.Contains(string(account), "Contacts?:") || !strings.Contains(string(account), "Owner?:") || !strings.Contains(string(account), "ChildAccounts?: Account[];") {
+				t.Fatalf("Account=%s", account)
+			}
+		})
+	}
+}

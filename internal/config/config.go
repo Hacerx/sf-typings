@@ -5,6 +5,7 @@ import (
 	"os"
 	"regexp"
 	"sort"
+	"strings"
 
 	"sf-typings/internal/jsonutil"
 )
@@ -14,6 +15,9 @@ type Config struct {
 	OrgAlias    string   `json:"orgAlias"`
 	Objects     []string `json:"objects"`
 	ApexSources []string `json:"apexSources"`
+	Out         string   `json:"out"`
+	Snapshots   bool     `json:"snapshots"`
+	AllChildren bool     `json:"allChildren"`
 }
 
 var apiName = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_]*$`)
@@ -28,6 +32,20 @@ func Load(path string) (Config, error) {
 	}
 	if err := jsonutil.Decode(b, &c, true); err != nil {
 		return c, fmt.Errorf("invalid config JSON")
+	}
+	// JSON null is not a string or boolean option. encoding/json otherwise
+	// accepts it silently for these scalar Go fields.
+	var values map[string]any
+	if jsonutil.Decode(b, &values, false) != nil {
+		return c, fmt.Errorf("invalid config JSON")
+	}
+	for key, value := range values {
+		switch strings.ToLower(key) {
+		case "out", "snapshots", "allchildren":
+			if value == nil {
+				return c, fmt.Errorf("invalid config JSON")
+			}
+		}
 	}
 	if len(c.Objects) == 0 && len(c.ApexSources) == 0 {
 		return c, fmt.Errorf("objects or apexSources must be nonempty")

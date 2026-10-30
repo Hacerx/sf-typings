@@ -1,4 +1,7 @@
 {
   "orgAlias": "dev",
-  "objects": ["Account", "Contact"]
+  "objects": ["Account", "Contact"],
+  "out": "generated",
+  "snapshots": false,
+  "allChildren": false
 }

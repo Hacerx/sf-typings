@@ -10,6 +10,18 @@ import (
 func TestLoad(t *testing.T) {
 	for _, tc := range []struct{ name, raw, want string }{
 		{"invalid JSON", `{`, "invalid config JSON"},
+		{"execution options", `{"apexSources":["classes"],"out":"generated","snapshots":true,"allChildren":true}`, ""},
+		{"wrong output type", `{"apexSources":["classes"],"out":false}`, "invalid config JSON"},
+		{"wrong snapshots type", `{"apexSources":["classes"],"snapshots":"true"}`, "invalid config JSON"},
+		{"wrong allChildren type", `{"apexSources":["classes"],"allChildren":1}`, "invalid config JSON"},
+		{"null output", `{"apexSources":["classes"],"out":null}`, "invalid config JSON"},
+		{"null snapshots", `{"apexSources":["classes"],"snapshots":null}`, "invalid config JSON"},
+		{"null allChildren", `{"apexSources":["classes"],"allChildren":null}`, "invalid config JSON"},
+		{"uppercase null output", `{"apexSources":["classes"],"OUT":null}`, "invalid config JSON"},
+		{"mixed-case null snapshots", `{"apexSources":["classes"],"SnapShots":null}`, "invalid config JSON"},
+		{"uppercase null allChildren", `{"apexSources":["classes"],"ALLCHILDREN":null}`, "invalid config JSON"},
+		{"case-insensitive valid options", `{"apexSources":["classes"],"OUT":"generated","SNAPSHOTS":false,"ALLCHILDREN":true}`, ""},
+		{"bootstrap config", `{"apexSources":["classes"],"config":"other.json"}`, "invalid config JSON"},
 		{"unknown key", `{"apexSources":["classes"],"extra":true}`, "invalid config JSON"},
 		{"trailing JSON", `{"apexSources":["classes"]} {}`, "invalid config JSON"},
 		{"empty", `{}`, "objects or apexSources must be nonempty"},
@@ -34,6 +46,9 @@ func TestLoad(t *testing.T) {
 			}
 			if err != nil {
 				t.Fatal(err)
+			}
+			if tc.name == "execution options" && (got.Out != "generated" || !got.Snapshots || !got.AllChildren) {
+				t.Fatalf("options=%+v", got)
 			}
 			if tc.name == "sorted objects" && !reflect.DeepEqual(got.Objects, []string{"Account", "Contact"}) {
 				t.Fatalf("objects=%v", got.Objects)

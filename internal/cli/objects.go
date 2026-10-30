@@ -12,6 +12,10 @@ import (
 )
 
 func objectOutputs(ctx context.Context, alias string, names []string, snapshots bool, local, fallback auth.Resolver, httpClient *http.Client) ([]generator.File, error) {
+	return objectOutputsWithOptions(ctx, alias, names, snapshots, false, local, fallback, httpClient)
+}
+
+func objectOutputsWithOptions(ctx context.Context, alias string, names []string, snapshots, allChildren bool, local, fallback auth.Resolver, httpClient *http.Client) ([]generator.File, error) {
 	ctx, cancel := context.WithTimeout(ctx, 35*time.Second)
 	defer cancel()
 	creds, err := local(ctx, alias)
@@ -36,7 +40,7 @@ func objectOutputs(ctx context.Context, alias string, names []string, snapshots 
 	if err != nil || creds.Token == "" {
 		return nil, fmt.Errorf("org token unavailable")
 	}
-	files, err := restOutputs(ctx, names, snapshots, creds, httpClient)
+	files, err := restOutputsWithOptions(ctx, names, snapshots, allChildren, creds, httpClient)
 	if !usingCLI && salesforce.IsUnauthorized(err) {
 		// Keep only the validated local instance URL; discard the stale bearer.
 		instance := creds.Instance
@@ -46,20 +50,29 @@ func objectOutputs(ctx context.Context, alias string, names []string, snapshots 
 			return nil, fmt.Errorf("org token unavailable")
 		}
 		creds.Instance = instance
-		return restOutputs(ctx, names, snapshots, creds, httpClient)
+		return restOutputsWithOptions(ctx, names, snapshots, allChildren, creds, httpClient)
 	}
 	return files, err
 }
 
 // Collect in memory on each attempt; a failed or stale-token attempt is never published.
 func restOutputs(ctx context.Context, names []string, snapshots bool, creds auth.Credentials, client *http.Client) ([]generator.File, error) {
+	return restOutputsWithOptions(ctx, names, snapshots, false, creds, client)
+}
+
+func restOutputsWithOptions(ctx context.Context, names []string, snapshots, allChildren bool, creds auth.Credentials, client *http.Client) ([]generator.File, error) {
+	// Scope is configured membership, independent of queue/discovery order.
+	roots := make(map[string]bool, len(names))
+	for _, name := range names {
+		roots[name] = true
+	}
 	var files []generator.File
 	err := salesforce.DescribeGraph(ctx, names, creds, client, func(name string, raw []byte) ([]string, error) {
-		generated, parents, err := generator.GenerateWithParents(name, raw, snapshots)
+		generated, targets, err := generator.GenerateWithRelationships(name, raw, snapshots, allChildren || roots[name])
 		if err == nil {
 			files = append(files, generated...)
 		}
-		return parents, err
+		return targets, err
 	})
 	if err != nil {
 		return nil, err
