@@ -34,7 +34,7 @@ T5 [S7] Generate deterministic object/field JSDoc from Describe metadata, includ
 
 T6 [S7-S12] Emit structured JSDoc tags (`@sfType`, other plain metadata tags) and restricted/unrestricted picklist unions, preserving optionality, nullability, multipicklist strings, formulas, and complete metadata; route: bounded worker due context backstop; commit: a1aa504 (verified complete).
 
-T7 [S13-S18] Replace exhaustive JSDoc with concise relevant metadata; retain defaults/formulas/lookups, unique/externalId only when true, and full JSON snapshots, preserve types and conditional description; route: bounded worker due context backstop; commit: pending.
+T7 [S13-S18] Replace exhaustive JSDoc with concise relevant metadata; retain defaults/formulas/lookups, unique/externalId only when true, and full JSON snapshots, preserve types and conditional description; route: bounded worker due context backstop; commit: 0f66e28 (verified complete).
 
 ## Log
 L1: Entonces creo que mejor sería cambiar de rumbo y optar por otro tipo de solución, podemos crear un cli en go que permita hacer un describe y obtener todos los datos de los objetos (con un fichero de configuración que permita filtrar qué objetos queremos obtener) o también generar .d.ts a partir de los métodos de apex, puesto que el tipado de sf solo incluye "any"
