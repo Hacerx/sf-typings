@@ -67,12 +67,21 @@ func restOutputsWithOptions(ctx context.Context, names []string, snapshots, allC
 		roots[name] = true
 	}
 	var files []generator.File
-	err := salesforce.DescribeGraph(ctx, names, creds, client, func(name string, raw []byte) ([]string, error) {
-		generated, targets, err := generator.GenerateWithRelationships(name, raw, snapshots, allChildren || roots[name])
-		if err == nil {
-			files = append(files, generated...)
+	err := salesforce.DescribeGraphLevels(ctx, names, creds, client, func(node salesforce.GraphNode, raw []byte) ([]salesforce.GraphNode, error) {
+		includeChildren := roots[node.Name] || allChildren && node.Level < 5
+		generated, targets, err := generator.GenerateWithRelationshipTargets(node.Name, raw, snapshots, includeChildren)
+		if err != nil {
+			return nil, err
 		}
-		return targets, err
+		files = append(files, generated...)
+		var edges []salesforce.GraphNode
+		for _, name := range targets.Parents {
+			edges = append(edges, salesforce.GraphNode{Name: name, Level: node.Level})
+		}
+		for _, name := range targets.Children {
+			edges = append(edges, salesforce.GraphNode{Name: name, Level: node.Level + 1})
+		}
+		return edges, nil
 	})
 	if err != nil {
 		return nil, err

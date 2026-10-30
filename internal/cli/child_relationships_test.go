@@ -21,18 +21,21 @@ func TestChildGraphRunWithDeps(t *testing.T) {
 		name                              string
 		flags                             []string
 		recursive, snapshots, rootContact bool
-		bad, badObject                    string
+		bad, badObject, children          string
 		retry                             bool
 		want                              []string
 	}{
 		{name: "default", want: []string{"Account", "Contact", "User", "Team"}},
-		{name: "recursive flag", flags: []string{"-all-children", "-snapshots"}, want: []string{"Account", "Contact", "User", "Note", "Extra", "Team"}},
-		{name: "recursive JSON", recursive: true, snapshots: true, want: []string{"Account", "Contact", "User", "Note", "Extra", "Team"}},
+		{name: "merged child fields", snapshots: true, children: `[{"relationshipName":"Contacts","childSObject":"Contact","field":"RelatedRecordId"},{"relationshipName":"Contacts","childSObject":"Contact","field":"AccountId"},{"relationshipName":"Contacts","childSObject":"Contact","field":"AccountId"},{"relationshipName":"ChildAccounts","childSObject":"Account"}]`, want: []string{"Account", "Contact", "User", "Team"}},
+		{name: "conflicting child targets", bad: `[{"relationshipName":"Contacts","childSObject":"Contact"},{"relationshipName":"Contacts","childSObject":"User"}]`, want: []string{"Account"}},
+		{name: "recursive flag", flags: []string{"-all-children", "-snapshots"}, want: []string{"Account", "Contact", "User", "Team", "Note", "Extra"}},
+		{name: "recursive JSON", recursive: true, snapshots: true, want: []string{"Account", "Contact", "User", "Team", "Note", "Extra"}},
 		{name: "explicit false", recursive: true, snapshots: true, flags: []string{"-all-children=false", "-snapshots=false"}, want: []string{"Account", "Contact", "User", "Team"}},
-		{name: "configured child root", rootContact: true, want: []string{"Account", "Contact", "User", "Note", "Team"}},
+		{name: "configured child root", rootContact: true, want: []string{"Account", "Contact", "User", "Team", "Note"}},
 		{name: "retry child graph", retry: true, want: []string{"Account", "Contact", "User", "Team"}},
 		{name: "target injection", bad: `[{"relationshipName":"Contacts","childSObject":"Contact"},{"relationshipName":"Bad","childSObject":"Contact/../../User"}]`, want: []string{"Account"}},
-		{name: "parent collision", bad: `[{"relationshipName":"Owner","childSObject":"Contact"}]`, want: []string{"Account"}},
+		{name: "parent child union", snapshots: true, children: `[{"relationshipName":"Contacts","childSObject":"Contact"},{"relationshipName":"ChildAccounts","childSObject":"Account"},{"relationshipName":"Customer","childSObject":"Account","field":"CustomerId"}]`, want: []string{"Account", "Contact", "User", "Team"}},
+		{name: "scalar collision", bad: `[{"relationshipName":"OwnerId","childSObject":"Contact"}]`, want: []string{"Account"}},
 		{name: "late child failure", recursive: true, snapshots: true, badObject: "Contact", bad: `[{"relationshipName":"Notes","childSObject":"../Note"}]`, want: []string{"Account", "Contact"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -57,6 +60,9 @@ func TestChildGraphRunWithDeps(t *testing.T) {
 				t.Fatal(err)
 			}
 			accountChildren := `[{"relationshipName":"Contacts","childSObject":"Contact"},{"relationshipName":"ChildAccounts","childSObject":"Account"},{"relationshipName":null,"childSObject":"Event"},{"relationshipName":"Old","childSObject":"OldEvent","deprecatedAndHidden":true}]`
+			if tc.children != "" {
+				accountChildren = tc.children
+			}
 			if tc.bad != "" && tc.badObject == "" {
 				accountChildren = tc.bad
 			}
@@ -166,6 +172,13 @@ func TestChildGraphRunWithDeps(t *testing.T) {
 					if err != nil || !json.Valid(data) {
 						t.Fatalf("snapshot %s: %s %v", name, data, err)
 					}
+					var original, snapshot any
+					if err := json.Unmarshal([]byte(metadata[name]), &original); err != nil {
+						t.Fatal(err)
+					}
+					if err := json.Unmarshal(data, &snapshot); err != nil || !reflect.DeepEqual(original, snapshot) {
+						t.Fatalf("changed snapshot %s: %v", name, err)
+					}
 				} else if name == "Account" {
 					assertUnchanged(t, filepath.Join(dest, "Account.describe.json"))
 				} else if _, err := os.Stat(filepath.Join(dest, name+".describe.json")); !os.IsNotExist(err) {
@@ -173,6 +186,19 @@ func TestChildGraphRunWithDeps(t *testing.T) {
 				}
 			}
 			account, _ := os.ReadFile(filepath.Join(dest, "Account.d.ts"))
+			if tc.name == "merged child fields" && (strings.Count(string(account), "Contacts?:") != 1 || !strings.Contains(string(account), "Contacts?: SFParent1[];") || !strings.Contains(string(account), "Child relationship via AccountId, RelatedRecordId; available when queried.")) {
+				t.Fatalf("merged Account=%s", account)
+			}
+			if tc.name == "parent child union" {
+				for _, want := range []string{"Customer?: SFParent1 | Account[] | null;", "Parent relationship via CustomerId; available when queried.", "Child relationship via CustomerId; available when queried.", "CustomerId?: string | null;"} {
+					if !strings.Contains(string(account), want) {
+						t.Fatalf("missing %q in %s", want, account)
+					}
+				}
+				if strings.Count(string(account), "Customer?:") != 1 {
+					t.Fatalf("duplicate union property: %s", account)
+				}
+			}
 			if !strings.Contains(string(account), "Contacts?:") || !strings.Contains(string(account), "Owner?:") || !strings.Contains(string(account), "ChildAccounts?: Account[];") {
 				t.Fatalf("Account=%s", account)
 			}
