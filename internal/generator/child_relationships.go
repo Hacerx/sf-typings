@@ -1,15 +1,18 @@
 package generator
 
-import "fmt"
+import (
+	"fmt"
+	"sort"
+)
 
 type childRelationship struct {
 	target string
-	field  string
+	fields []string
 }
 
 // childRelationships uses only named, visible relationships. Ignored entries
 // remain untouched in snapshots and never contribute imports or graph targets.
-func childRelationships(value any, fields map[string]map[string]any, parents map[string]parentRelationship) (map[string]childRelationship, error) {
+func childRelationships(value any, fields map[string]map[string]any) (map[string]childRelationship, error) {
 	children := make(map[string]childRelationship)
 	if value == nil {
 		return children, nil
@@ -50,14 +53,22 @@ func childRelationships(value any, fields map[string]map[string]any, parents map
 				return nil, fmt.Errorf("invalid child relationship")
 			}
 		}
-		_, parentExists := parents[name]
-		if fields[name] != nil || parentExists {
+		if fields[name] != nil {
 			return nil, fmt.Errorf("conflicting child relationship")
 		}
-		if _, exists := children[name]; exists {
+		child, exists := children[name]
+		if exists && child.target != target {
 			return nil, fmt.Errorf("conflicting child relationship")
 		}
-		children[name] = childRelationship{target, field}
+		child.target = target
+		if field != "" {
+			i := sort.SearchStrings(child.fields, field)
+			if i == len(child.fields) || child.fields[i] != field {
+				child.fields = append(child.fields, field)
+				sort.Strings(child.fields)
+			}
+		}
+		children[name] = child
 	}
 	return children, nil
 }

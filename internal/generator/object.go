@@ -54,15 +54,40 @@ func GenerateWithParents(name string, raw []byte, snapshots bool) ([]File, []str
 // returns sorted, unique targets for all emitted relationships. Callers control
 // child scope per object; Generate and GenerateWithParents remain parent-only.
 func GenerateWithRelationships(name string, raw []byte, snapshots, includeChildren bool) ([]File, []string, error) {
-	var targets []string
-	files, err := generate(name, raw, snapshots, includeChildren, &targets)
+	files, targets, err := GenerateWithRelationshipTargets(name, raw, snapshots, includeChildren)
 	if err != nil {
 		return nil, nil, err
+	}
+	all := make(map[string]bool)
+	for _, name := range append(targets.Parents, targets.Children...) {
+		all[name] = true
+	}
+	var combined []string
+	for name := range all {
+		combined = append(combined, name)
+	}
+	sort.Strings(combined)
+	return files, combined, nil
+}
+
+// RelationshipTargets separates emitted parent and child edges for caller policy.
+// Each list is sorted and unique; a target may occur in both lists.
+type RelationshipTargets struct {
+	Parents  []string
+	Children []string
+}
+
+// GenerateWithRelationshipTargets renders once and reports only emitted edges.
+func GenerateWithRelationshipTargets(name string, raw []byte, snapshots, includeChildren bool) ([]File, RelationshipTargets, error) {
+	var targets RelationshipTargets
+	files, err := generate(name, raw, snapshots, includeChildren, &targets)
+	if err != nil {
+		return nil, RelationshipTargets{}, err
 	}
 	return files, targets, nil
 }
 
-func generate(name string, raw []byte, snapshots, includeChildren bool, targets *[]string) ([]File, error) {
+func generate(name string, raw []byte, snapshots, includeChildren bool, targets *RelationshipTargets) ([]File, error) {
 	invalid := fmt.Errorf("invalid describe for %s", name)
 	if !typeIdentifier(name) {
 		return nil, invalid
@@ -98,7 +123,7 @@ func generate(name string, raw []byte, snapshots, includeChildren bool, targets 
 	}
 	var children map[string]childRelationship
 	if includeChildren {
-		children, err = childRelationships(metadata["childRelationships"], byName, parents)
+		children, err = childRelationships(metadata["childRelationships"], byName)
 		if err != nil {
 			return nil, invalid
 		}
@@ -116,7 +141,15 @@ func generate(name string, raw []byte, snapshots, includeChildren bool, targets 
 	}
 	sort.Strings(relationshipTargets)
 	if targets != nil {
-		*targets = relationshipTargets
+		targets.Parents = parentTargets
+		childTargets := make(map[string]bool)
+		for _, child := range children {
+			childTargets[child.target] = true
+		}
+		for target := range childTargets {
+			targets.Children = append(targets.Children, target)
+		}
+		sort.Strings(targets.Children)
 	}
 	occupied := map[string]bool{name: true}
 	for _, field := range names {
@@ -127,8 +160,10 @@ func generate(name string, raw []byte, snapshots, includeChildren bool, targets 
 		names = append(names, relationship)
 	}
 	for relationship := range children {
+		if _, parentExists := parents[relationship]; !parentExists {
+			names = append(names, relationship)
+		}
 		occupied[relationship] = true
-		names = append(names, relationship)
 	}
 	sort.Strings(names)
 	var text strings.Builder
@@ -152,25 +187,36 @@ func generate(name string, raw []byte, snapshots, includeChildren bool, targets 
 	writeDescribeDocs(&text, "", metadata, true)
 	fmt.Fprintf(&text, "export interface %s {\n", name)
 	for _, fieldName := range names {
-		if child, ok := children[fieldName]; ok {
-			if child.field != "" {
-				fmt.Fprintf(&text, "  /** Child relationship via %s; available when queried. */\n", child.field)
-			} else {
-				fmt.Fprintln(&text, "  /** Child relationship; available when queried. */")
-			}
-			fmt.Fprintf(&text, "  %s?: %s[];\n", fieldName, aliases[child.target])
-			continue
-		}
 		if parent, ok := parents[fieldName]; ok {
 			var types []string
 			for _, target := range parent.targets {
 				types = append(types, aliases[target])
 			}
+			if child, ok := children[fieldName]; ok {
+				types = append(types, aliases[child.target]+"[]")
+				fmt.Fprintf(&text, "  /**\n   * Parent relationship via %s; available when queried.\n", parent.field)
+				if len(child.fields) > 0 {
+					fmt.Fprintf(&text, "   * Child relationship via %s; available when queried.\n", strings.Join(child.fields, ", "))
+				} else {
+					fmt.Fprintln(&text, "   * Child relationship; available when queried.")
+				}
+				fmt.Fprintln(&text, "   */")
+			} else {
+				fmt.Fprintf(&text, "  /** Parent relationship via %s; available when queried. */\n", parent.field)
+			}
 			if parent.nullable {
 				types = append(types, "null")
 			}
-			fmt.Fprintf(&text, "  /** Parent relationship via %s; available when queried. */\n", parent.field)
 			fmt.Fprintf(&text, "  %s?: %s;\n", fieldName, strings.Join(types, " | "))
+			continue
+		}
+		if child, ok := children[fieldName]; ok {
+			if len(child.fields) > 0 {
+				fmt.Fprintf(&text, "  /** Child relationship via %s; available when queried. */\n", strings.Join(child.fields, ", "))
+			} else {
+				fmt.Fprintln(&text, "  /** Child relationship; available when queried. */")
+			}
+			fmt.Fprintf(&text, "  %s?: %s[];\n", fieldName, aliases[child.target])
 			continue
 		}
 		f := byName[fieldName]
