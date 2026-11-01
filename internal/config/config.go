@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"time"
 
 	"sf-typings/internal/jsonutil"
 )
@@ -18,6 +19,19 @@ type Config struct {
 	Out         string   `json:"out"`
 	Snapshots   bool     `json:"snapshots"`
 	AllChildren bool     `json:"allChildren"`
+	Timeout     string   `json:"timeout"`
+}
+
+// DefaultTimeout is the shared authentication and Describe graph budget.
+const DefaultTimeout = 35 * time.Second
+
+// ParseTimeout accepts only positive Go durations, without exposing input in errors.
+func ParseTimeout(value string) (time.Duration, error) {
+	d, err := time.ParseDuration(value)
+	if err != nil || d <= 0 {
+		return 0, fmt.Errorf("invalid timeout (use a positive Go duration, e.g. 5m)")
+	}
+	return d, nil
 }
 
 var apiName = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_]*$`)
@@ -25,7 +39,7 @@ var aliasName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.-]*$`)
 
 // Load decodes one strict configuration and validates it before any org access.
 func Load(path string) (Config, error) {
-	var c Config
+	c := Config{Timeout: DefaultTimeout.String()}
 	b, err := os.ReadFile(path)
 	if err != nil {
 		return c, fmt.Errorf("cannot read config")
@@ -41,11 +55,14 @@ func Load(path string) (Config, error) {
 	}
 	for key, value := range values {
 		switch strings.ToLower(key) {
-		case "out", "snapshots", "allchildren":
+		case "out", "snapshots", "allchildren", "timeout":
 			if value == nil {
 				return c, fmt.Errorf("invalid config JSON")
 			}
 		}
+	}
+	if _, err := ParseTimeout(c.Timeout); err != nil {
+		return c, err
 	}
 	if len(c.Objects) == 0 && len(c.ApexSources) == 0 {
 		return c, fmt.Errorf("objects or apexSources must be nonempty")

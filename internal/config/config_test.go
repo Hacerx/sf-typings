@@ -10,6 +10,14 @@ import (
 func TestLoad(t *testing.T) {
 	for _, tc := range []struct{ name, raw, want string }{
 		{"invalid JSON", `{`, "invalid config JSON"},
+		{"timeout", `{"apexSources":["classes"],"timeout":"5m"}`, ""},
+		{"wrong timeout type", `{"apexSources":["classes"],"timeout":35}`, "invalid config JSON"},
+		{"null timeout", `{"apexSources":["classes"],"timeout":null}`, "invalid config JSON"},
+		{"mixed-case null timeout", `{"apexSources":["classes"],"TiMeOuT":null}`, "invalid config JSON"},
+		{"empty timeout", `{"apexSources":["classes"],"timeout":""}`, "invalid timeout (use a positive Go duration, e.g. 5m)"},
+		{"zero timeout", `{"apexSources":["classes"],"timeout":"0"}`, "invalid timeout (use a positive Go duration, e.g. 5m)"},
+		{"negative timeout", `{"apexSources":["classes"],"timeout":"-1s"}`, "invalid timeout (use a positive Go duration, e.g. 5m)"},
+		{"overflow timeout", `{"apexSources":["classes"],"timeout":"999999999999999999999h"}`, "invalid timeout (use a positive Go duration, e.g. 5m)"},
 		{"execution options", `{"apexSources":["classes"],"out":"generated","snapshots":true,"allChildren":true}`, ""},
 		{"wrong output type", `{"apexSources":["classes"],"out":false}`, "invalid config JSON"},
 		{"wrong snapshots type", `{"apexSources":["classes"],"snapshots":"true"}`, "invalid config JSON"},
@@ -46,6 +54,13 @@ func TestLoad(t *testing.T) {
 			}
 			if err != nil {
 				t.Fatal(err)
+			}
+			wantTimeout := "35s"
+			if tc.name == "timeout" {
+				wantTimeout = "5m"
+			}
+			if got.Timeout != wantTimeout {
+				t.Fatalf("timeout=%q want=%q", got.Timeout, wantTimeout)
 			}
 			if tc.name == "execution options" && (got.Out != "generated" || !got.Snapshots || !got.AllChildren) {
 				t.Fatalf("options=%+v", got)

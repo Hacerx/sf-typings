@@ -12,7 +12,7 @@ go run . -config config.json
 # Override JSON options explicitly:
 go run . -config config.json -out generated -snapshots -all-children=false
 # Opt into recursive child discovery (potentially a much larger graph):
-go run . -config config.json -all-children
+go run . -config config.json -all-children -timeout 5m
 ```
 
 Copy `config.example.json` to `config.json` and choose the objects you need. For Apex classes, add `"apexSources": ["/path/to/your/sfdx-project/force-app/main/default/classes"]` (a file or recursively scanned directory). Paths in `apexSources` are resolved relative to **the CLI working directory**, not the config file. For an Apex-only run use `{"apexSources":["/path/to/your/classes"]}`; `sf` and an org alias are not needed then. At least one object or Apex source is required. `-config` is required; a nonempty output directory must come from JSON `out` or `-out`.
@@ -26,7 +26,8 @@ All runtime options can be set in the strict JSON configuration:
   "apexSources": ["classes"],
   "out": "generated",
   "snapshots": false,
-  "allChildren": false
+  "allChildren": false,
+  "timeout": "35s"
 }
 ```
 
@@ -35,10 +36,17 @@ All runtime options can be set in the strict JSON configuration:
 | `-out generated` | `out` (string) | Required from either source |
 | `-snapshots` | `snapshots` (boolean) | `false` |
 | `-all-children` | `allChildren` (boolean) | `false` |
+| `-timeout 5m` | `timeout` (string, positive Go duration) | `35s` |
+
+`timeout` accepts Go duration syntax such as `35s`, `5m`, or `1m30s`. An explicit `-timeout` overrides JSON; omission uses the configured value or `35s`. Empty, malformed, overflowing, zero, and negative durations fail before authentication, network, or output with `sf-typings: invalid timeout (use a positive Go duration, e.g. 5m)`. Non-string JSON values (including `null`) fail with `sf-typings: invalid config JSON`, even if a flag is supplied. Invalid configuration is never repaired by an override. Timeout is validated for Apex-only runs too, but only budgets the authentication/Describe graph.
 
 Only **explicitly supplied** flags override JSON: `-snapshots=false -all-children=false` disables configured true values. `-out ""` overrides the configured path and fails, rather than falling back. Output paths, like Apex source paths, are relative to the CLI working directory. Unknown keys and wrong option types are rejected before authentication, requests, or output. `-config` and `-help` select/bootstrap the run and are not JSON fields. Existing flag-only execution options remain supported, for example `go run . -config config.json -out generated -snapshots`.
 
 Object generation resolves the configured org alias using `github.com/Hacerx/sf-auth-decrypt-go/authdecrypt` and uses its decrypted access token in memory for authenticated Salesforce REST sObject Describe. If the local org has no instance URL or cannot be resolved, the CLI obtains **only** `instanceUrl` from `sf org display --target-org ALIAS --json` and ignores any display access token. It validates the HTTPS Salesforce host before obtaining the token from `sf org auth show-access-token -o ALIAS --no-prompt --json`; if URL lookup or validation fails, it does not request a token or send a bearer. The token command returns only `accessToken`. If a local token is missing or receives HTTP 401 at version discovery or Describe, the CLI obtains that token once, retaining and revalidating the previously trusted local URL for one REST attempt or retry. No `sf org display` occurs on a local-token 401. It never retries another error or retries a token already obtained from the CLI. The CLI never calls `sf sobject describe`. It discovers the highest numeric REST API version from `/services/data/`, requires an HTTPS Salesforce instance host, refuses redirects, and bounds request time and response size. Credential and network failures are reported without raw secret-bearing error text. A live Account generation on `dev` succeeded after the token-command correction. A separate authorized diagnostic confirmed local credential resolution and REST HTTP 200 with zero CLI fallback calls; see `odd/tasks/sf-typings.md`. Those observations are not a guarantee that cached tokens remain valid. `-snapshots` additionally writes the complete per-object Describe result as machine-readable `Object.describe.json` alongside the JSDoc in `Object.d.ts`. Treat snapshots as potentially sensitive org metadata; review generated output before distributing it. The CLI does not fetch records. Names and Describe responses are validated; generated object fields are optional because a SOQL projection can omit them, and nillable fields additionally allow `null`. Unknown Salesforce field types become `unknown`. These declarations do not guarantee field access or query selection.
+
+## Plan graph generation time
+
+Use `-timeout 5m` or JSON `"timeout": "5m"` for graphs that exceed the default 35-second authentication/Describe budget. Small graphs can be quick; recursive graphs can take minutes even with only one configured root. This does not increase parallelism or bound compilation/startup, local Apex work, or output publication. See [Graph timeout and observed timings](docs/graph-timeout.md) for precedence, timing boundaries, and the observed 1,032-object run (2m59s end to end, not a performance guarantee).
 
 ## Describe metadata in your editor
 
@@ -122,7 +130,7 @@ Parent?: SFParent1 | null;
 
 Polymorphic lookups use, for example, `@referenceTo ["Account","Contact"]`, and the parent type is a sorted, deduplicated union of the corresponding imported types. Self-relations use the current interface without a self-import; type-only imports permit mutual cycles. Import aliases avoid object/property name collisions. All properties remain optional for partial query projections; the parent additionally allows `null` exactly when its reference ID is nillable. Existing ID, picklist and formula types are unchanged. Missing relationship names or empty targets generate no parent property and cause no target fetch. Malformed identifiers and conflicting relationship/property names fail safely before publication.
 
-Generation time depends on local authentication, any token refresh, REST latency, and all discovered objects/Apex sources. The graph shares the existing **35-second overall budget**, including authentication and the one permitted token retry; each request is also bounded. Large graphs can time out. REST version discovery happens once per attempt. A local-token 401 discards the entire in-memory graph and retries from the roots with fresh visited state. Inaccessible/unknown parent or child targets, permission errors, timeouts, and malformed metadata fail the run before publishing any files, leaving prior outputs untouched. This pre-publication guarantee does not promise filesystem transactionality if output saving itself fails. There is no fixed duration or benchmark guarantee; JSDoc rendering itself requires no additional Salesforce requests. Treat declarations, as well as snapshots, as potentially sensitive org metadata before sharing them.
+Generation time depends on local authentication, any token refresh, REST latency, and all discovered objects/Apex sources. The graph shares a **35-second overall budget by default**, configurable with `-timeout 5m` or JSON `"timeout": "5m"`. One deadline spans authentication, REST version discovery, every Describe node, and the one permitted token retry; a 401 never resets it. The per-request **15-second** cap and auth CLI **15-second** cap remain unchanged, even when the overall budget is larger. Large graphs can time out. REST version discovery happens once per attempt. A local-token 401 discards the entire in-memory graph and retries from the roots with fresh visited state. Inaccessible/unknown parent or child targets, permission errors, timeouts, and malformed metadata fail the run before publishing any files, leaving prior outputs untouched. This pre-publication guarantee does not promise filesystem transactionality if output saving itself fails. There is no fixed duration or benchmark guarantee; JSDoc rendering itself requires no additional Salesforce requests. Treat declarations, as well as snapshots, as potentially sensitive org metadata before sharing them.
 
 ## Local Apex declarations
 

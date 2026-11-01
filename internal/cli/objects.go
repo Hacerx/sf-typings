@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"sf-typings/internal/auth"
+	"sf-typings/internal/config"
 	"sf-typings/internal/generator"
 	"sf-typings/internal/salesforce"
 )
@@ -16,7 +17,11 @@ func objectOutputs(ctx context.Context, alias string, names []string, snapshots 
 }
 
 func objectOutputsWithOptions(ctx context.Context, alias string, names []string, snapshots, allChildren bool, local, fallback auth.Resolver, httpClient *http.Client) ([]generator.File, error) {
-	ctx, cancel := context.WithTimeout(ctx, 35*time.Second)
+	return objectOutputsWithTimeout(ctx, alias, names, snapshots, allChildren, config.DefaultTimeout, local, fallback, httpClient)
+}
+
+func objectOutputsWithTimeout(ctx context.Context, alias string, names []string, snapshots, allChildren bool, budget time.Duration, local, fallback auth.Resolver, httpClient *http.Client) ([]generator.File, error) {
+	ctx, cancel := context.WithTimeout(ctx, budget)
 	defer cancel()
 	creds, err := local(ctx, alias)
 	needInstance := err != nil || creds.Instance == ""

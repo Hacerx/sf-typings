@@ -3,5 +3,6 @@
   "objects": ["Account", "Contact"],
   "out": "generated",
   "snapshots": false,
-  "allChildren": false
+  "allChildren": false,
+  "timeout": "35s"
 }
