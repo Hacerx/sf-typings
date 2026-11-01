@@ -87,7 +87,19 @@ func GenerateWithRelationshipTargets(name string, raw []byte, snapshots, include
 	return files, targets, nil
 }
 
+// GenerateWithFilteredRelationships excludes nonmatching edges and imports while
+// retaining ID fields and complete snapshots. A nil predicate preserves all edges.
+func GenerateWithFilteredRelationships(name string, raw []byte, snapshots, includeChildren bool, allow func(string) bool) ([]File, RelationshipTargets, error) {
+	var targets RelationshipTargets
+	files, err := generateFiltered(name, raw, snapshots, includeChildren, &targets, allow)
+	return files, targets, err
+}
+
 func generate(name string, raw []byte, snapshots, includeChildren bool, targets *RelationshipTargets) ([]File, error) {
+	return generateFiltered(name, raw, snapshots, includeChildren, targets, nil)
+}
+
+func generateFiltered(name string, raw []byte, snapshots, includeChildren bool, targets *RelationshipTargets, allow func(string) bool) ([]File, error) {
 	invalid := fmt.Errorf("invalid describe for %s", name)
 	if !typeIdentifier(name) {
 		return nil, invalid
@@ -126,6 +138,34 @@ func generate(name string, raw []byte, snapshots, includeChildren bool, targets 
 		children, err = childRelationships(metadata["childRelationships"], byName)
 		if err != nil {
 			return nil, invalid
+		}
+	}
+	if allow != nil {
+		selectedParents := make(map[string]bool)
+		for relationship, parent := range parents {
+			var kept []string
+			for _, target := range parent.targets {
+				if allow(target) {
+					kept = append(kept, target)
+					selectedParents[target] = true
+				}
+			}
+			if len(kept) == 0 {
+				delete(parents, relationship)
+			} else {
+				parent.targets = kept
+				parents[relationship] = parent
+			}
+		}
+		parentTargets = nil
+		for target := range selectedParents {
+			parentTargets = append(parentTargets, target)
+		}
+		sort.Strings(parentTargets)
+		for relationship, child := range children {
+			if !allow(child.target) {
+				delete(children, relationship)
+			}
 		}
 	}
 	allTargets := make(map[string]bool)

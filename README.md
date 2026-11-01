@@ -27,6 +27,7 @@ All runtime options can be set in the strict JSON configuration:
   "out": "generated",
   "snapshots": false,
   "allChildren": false,
+  "filterRelatedObjects": true,
   "timeout": "35s"
 }
 ```
@@ -37,6 +38,7 @@ All runtime options can be set in the strict JSON configuration:
 | `-snapshots` | `snapshots` (boolean) | `false` |
 | `-all-children` | `allChildren` (boolean) | `false` |
 | `-timeout 5m` | `timeout` (string, positive Go duration) | `35s` |
+| `-filter-related-objects=false` | `filterRelatedObjects` (boolean) | `true` |
 
 `timeout` accepts Go duration syntax such as `35s`, `5m`, or `1m30s`. An explicit `-timeout` overrides JSON; omission uses the configured value or `35s`. Empty, malformed, overflowing, zero, and negative durations fail before authentication, network, or output with `sf-typings: invalid timeout (use a positive Go duration, e.g. 5m)`. Non-string JSON values (including `null`) fail with `sf-typings: invalid config JSON`, even if a flag is supplied. Invalid configuration is never repaired by an override. Timeout is validated for Apex-only runs too, but only budgets the authentication/Describe graph.
 
@@ -85,9 +87,28 @@ Formulas use the Salesforce result type and retain formula/CRUD/default metadata
 Total__c?: number | null;
 ```
 
+## Object selectors and wildcard filters
+
+Use exact API names or case-sensitive `*` patterns in `objects`:
+
+```json
+{
+  "orgAlias": "dev",
+  "objects": ["AC_*", "*__c", "Account"],
+  "filterRelatedObjects": true,
+  "out": "generated"
+}
+```
+
+`AC_*` selects names starting with `AC_`; `*__c` selects custom objects ending in `__c` (not custom metadata `__mdt` or platform events `__e`). `*` matches zero or more characters anywhere, including multiple spans; other glob syntax such as `?` or brackets is not supported. Selectors are combined as OR, with sorted, deduplicated roots. Wildcards use the authenticated REST sObject catalog for the selected API version; exact-only configurations do not request the catalog. Only objects visible to the authenticated user can be expanded. An empty combined selection fails with `sf-typings: object patterns matched no objects`; an unmatched pattern alongside a valid exact name or another matching pattern is allowed.
+
+**Related objects must match the same selectors by default**, including for exact-only lists. Excluded parent targets are removed from polymorphic unions; relationships with no remaining targets and excluded child collections are omitted, along with their imports. Lookup ID fields remain. Complete snapshots are never filtered. Excluded objects are not fetched or traversed as bridges to other objects. Existing files in the output directory are not deleted, so use a fresh directory to inspect a filtered run.
+
+Set `"filterRelatedObjects": false` or pass `-filter-related-objects=false` to follow related objects regardless of selectors (the previous traversal behavior). Explicit true/false flags override JSON; nonboolean or null JSON fails before org access. Expansion shares the existing timeout and single token-retry budget; catalog failure publishes no new files.
+
 ## Relationship graph and Apex child collections
 
-Configured objects are **roots**, not a fetch allowlist. By default, roots emit child collections and discover their direct child targets. Automatically discovered objects emit and discover **parents only**, unless they are also explicitly configured roots. Parent traversal stays fully transitive in both modes. Scope uses configured membership, not the reason or order an object was discovered.
+Selected objects are **roots**. With `filterRelatedObjects: false`, they are not a fetch allowlist. By default, roots emit child collections and discover their direct child targets. Automatically discovered objects emit and discover **parents only**, unless they are also explicitly configured roots. Parent traversal stays fully transitive within the allowed object scope in both modes. Scope uses configured membership, not the reason or order an object was discovered.
 
 `-all-children` (or JSON `"allChildren": true`) enables recursive child discovery up to **level 5**, counting each configured root as **level 1**. Each child edge adds 1; each parent edge costs **0**, preserving the current level without consuming or resetting child depth. Level-5 objects are generated, but emit/discover no children; their parents are still followed. An explicitly configured root always starts at 1. Shared objects use their **shallowest reachable child level**, so shorter paths and parent shortcuts are honored before generation.
 

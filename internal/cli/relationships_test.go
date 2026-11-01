@@ -22,7 +22,7 @@ func TestParentGraphRun(t *testing.T) {
 			root := t.TempDir()
 			cfg := filepath.Join(root, "config.json")
 			out := filepath.Join(root, "out")
-			if err := os.WriteFile(cfg, []byte(`{"orgAlias":"dev","objects":["Contact"]}`), 0600); err != nil {
+			if err := os.WriteFile(cfg, []byte(`{"orgAlias":"dev","filterRelatedObjects":false,"objects":["Contact"]}`), 0600); err != nil {
 				t.Fatal(err)
 			}
 			if err := os.MkdirAll(out, 0700); err != nil {

@@ -106,7 +106,7 @@ func TestChildDepthRun(t *testing.T) {
 				return auth.Credentials{Token: "test", Instance: "https://sample.my.salesforce.com"}, nil
 			}
 			cfg := filepath.Join(dir, "config.json")
-			raw, _ := json.Marshal(map[string]any{"orgAlias": "dev", "objects": roots, "out": dest, "allChildren": mode != "flag" && mode != "default", "snapshots": true})
+			raw, _ := json.Marshal(map[string]any{"orgAlias": "dev", "filterRelatedObjects": false, "objects": roots, "out": dest, "allChildren": mode != "flag" && mode != "default", "snapshots": true})
 			if err := os.WriteFile(cfg, raw, 0600); err != nil {
 				t.Fatal(err)
 			}

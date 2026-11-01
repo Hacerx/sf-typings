@@ -53,7 +53,7 @@ func TestChildGraphRunWithDeps(t *testing.T) {
 			if tc.rootContact {
 				objects = append(objects, "Contact")
 			}
-			config := map[string]any{"orgAlias": "dev", "objects": objects, "out": dest, "allChildren": tc.recursive, "snapshots": tc.snapshots}
+			config := map[string]any{"orgAlias": "dev", "filterRelatedObjects": false, "objects": objects, "out": dest, "allChildren": tc.recursive, "snapshots": tc.snapshots}
 			raw, _ := json.Marshal(config)
 			cfg := filepath.Join(root, "config.json")
 			if err := os.WriteFile(cfg, raw, 0600); err != nil {

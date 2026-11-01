@@ -10,6 +10,11 @@ import (
 func TestLoad(t *testing.T) {
 	for _, tc := range []struct{ name, raw, want string }{
 		{"invalid JSON", `{`, "invalid config JSON"},
+		{"filter default", `{"orgAlias":"dev","objects":["AC_*","*__c"]}`, ""},
+		{"filter false", `{"apexSources":["classes"],"filterRelatedObjects":false}`, ""},
+		{"null filter", `{"apexSources":["classes"],"filterRelatedObjects":null}`, "invalid config JSON"},
+		{"mixed-case null filter", `{"apexSources":["classes"],"FilterRelatedObjects":null}`, "invalid config JSON"},
+		{"wrong filter type", `{"apexSources":["classes"],"filterRelatedObjects":"false"}`, "invalid config JSON"},
 		{"timeout", `{"apexSources":["classes"],"timeout":"5m"}`, ""},
 		{"wrong timeout type", `{"apexSources":["classes"],"timeout":35}`, "invalid config JSON"},
 		{"null timeout", `{"apexSources":["classes"],"timeout":null}`, "invalid config JSON"},
@@ -54,6 +59,9 @@ func TestLoad(t *testing.T) {
 			}
 			if err != nil {
 				t.Fatal(err)
+			}
+			if got.FilterRelatedObjects != (tc.name != "filter false") {
+				t.Fatalf("filterRelatedObjects=%v", got.FilterRelatedObjects)
 			}
 			wantTimeout := "35s"
 			if tc.name == "timeout" {

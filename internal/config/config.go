@@ -13,13 +13,14 @@ import (
 
 // Config selects object metadata and local Apex sources for a single run.
 type Config struct {
-	OrgAlias    string   `json:"orgAlias"`
-	Objects     []string `json:"objects"`
-	ApexSources []string `json:"apexSources"`
-	Out         string   `json:"out"`
-	Snapshots   bool     `json:"snapshots"`
-	AllChildren bool     `json:"allChildren"`
-	Timeout     string   `json:"timeout"`
+	OrgAlias             string   `json:"orgAlias"`
+	Objects              []string `json:"objects"`
+	ApexSources          []string `json:"apexSources"`
+	Out                  string   `json:"out"`
+	Snapshots            bool     `json:"snapshots"`
+	AllChildren          bool     `json:"allChildren"`
+	FilterRelatedObjects bool     `json:"filterRelatedObjects"`
+	Timeout              string   `json:"timeout"`
 }
 
 // DefaultTimeout is the shared authentication and Describe graph budget.
@@ -39,7 +40,7 @@ var aliasName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.-]*$`)
 
 // Load decodes one strict configuration and validates it before any org access.
 func Load(path string) (Config, error) {
-	c := Config{Timeout: DefaultTimeout.String()}
+	c := Config{Timeout: DefaultTimeout.String(), FilterRelatedObjects: true}
 	b, err := os.ReadFile(path)
 	if err != nil {
 		return c, fmt.Errorf("cannot read config")
@@ -55,7 +56,7 @@ func Load(path string) (Config, error) {
 	}
 	for key, value := range values {
 		switch strings.ToLower(key) {
-		case "out", "snapshots", "allchildren", "timeout":
+		case "out", "snapshots", "allchildren", "timeout", "filterrelatedobjects":
 			if value == nil {
 				return c, fmt.Errorf("invalid config JSON")
 			}
@@ -77,7 +78,7 @@ func Load(path string) (Config, error) {
 	}
 	seen := make(map[string]bool)
 	for _, name := range c.Objects {
-		if !apiName.MatchString(name) {
+		if !ValidObjectSelector(name) {
 			return c, fmt.Errorf("invalid object API name")
 		}
 		if seen[name] {

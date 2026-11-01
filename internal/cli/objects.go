@@ -21,6 +21,10 @@ func objectOutputsWithOptions(ctx context.Context, alias string, names []string,
 }
 
 func objectOutputsWithTimeout(ctx context.Context, alias string, names []string, snapshots, allChildren bool, budget time.Duration, local, fallback auth.Resolver, httpClient *http.Client) ([]generator.File, error) {
+	return objectOutputsSelected(ctx, alias, names, snapshots, allChildren, false, budget, local, fallback, httpClient)
+}
+
+func objectOutputsSelected(ctx context.Context, alias string, names []string, snapshots, allChildren, filterRelated bool, budget time.Duration, local, fallback auth.Resolver, httpClient *http.Client) ([]generator.File, error) {
 	ctx, cancel := context.WithTimeout(ctx, budget)
 	defer cancel()
 	creds, err := local(ctx, alias)
@@ -45,7 +49,7 @@ func objectOutputsWithTimeout(ctx context.Context, alias string, names []string,
 	if err != nil || creds.Token == "" {
 		return nil, fmt.Errorf("org token unavailable")
 	}
-	files, err := restOutputsWithOptions(ctx, names, snapshots, allChildren, creds, httpClient)
+	files, err := restOutputsSelected(ctx, names, snapshots, allChildren, filterRelated, creds, httpClient)
 	if !usingCLI && salesforce.IsUnauthorized(err) {
 		// Keep only the validated local instance URL; discard the stale bearer.
 		instance := creds.Instance
@@ -55,7 +59,7 @@ func objectOutputsWithTimeout(ctx context.Context, alias string, names []string,
 			return nil, fmt.Errorf("org token unavailable")
 		}
 		creds.Instance = instance
-		return restOutputsWithOptions(ctx, names, snapshots, allChildren, creds, httpClient)
+		return restOutputsSelected(ctx, names, snapshots, allChildren, filterRelated, creds, httpClient)
 	}
 	return files, err
 }
@@ -66,15 +70,23 @@ func restOutputs(ctx context.Context, names []string, snapshots bool, creds auth
 }
 
 func restOutputsWithOptions(ctx context.Context, names []string, snapshots, allChildren bool, creds auth.Credentials, client *http.Client) ([]generator.File, error) {
+	return restOutputsSelected(ctx, names, snapshots, allChildren, false, creds, client)
+}
+
+func restOutputsSelected(ctx context.Context, names []string, snapshots, allChildren, filterRelated bool, creds auth.Credentials, client *http.Client) ([]generator.File, error) {
 	// Scope is configured membership, independent of queue/discovery order.
 	roots := make(map[string]bool, len(names))
 	for _, name := range names {
 		roots[name] = true
 	}
 	var files []generator.File
-	err := salesforce.DescribeGraphLevels(ctx, names, creds, client, func(node salesforce.GraphNode, raw []byte) ([]salesforce.GraphNode, error) {
-		includeChildren := roots[node.Name] || allChildren && node.Level < 5
-		generated, targets, err := generator.GenerateWithRelationshipTargets(node.Name, raw, snapshots, includeChildren)
+	var allow func(string) bool
+	if filterRelated {
+		allow = func(name string) bool { return config.MatchesObject(names, name) }
+	}
+	err := salesforce.DescribeSelectedGraph(ctx, names, creds, client, func(node salesforce.GraphNode, raw []byte) ([]salesforce.GraphNode, error) {
+		includeChildren := roots[node.Name] || config.MatchesObject(names, node.Name) || allChildren && node.Level < 5
+		generated, targets, err := generator.GenerateWithFilteredRelationships(node.Name, raw, snapshots, includeChildren, allow)
 		if err != nil {
 			return nil, err
 		}

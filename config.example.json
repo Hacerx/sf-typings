@@ -4,5 +4,6 @@
   "out": "generated",
   "snapshots": false,
   "allChildren": false,
+  "filterRelatedObjects": true,
   "timeout": "35s"
 }

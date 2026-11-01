@@ -26,7 +26,7 @@ func timeoutConfig(t *testing.T, options map[string]any) (string, string) {
 	if err := os.WriteFile(prior, []byte("original"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	cfg := map[string]any{"orgAlias": "dev", "objects": []string{"Account"}, "out": dest}
+	cfg := map[string]any{"orgAlias": "dev", "filterRelatedObjects": false, "objects": []string{"Account"}, "out": dest}
 	for k, v := range options {
 		cfg[k] = v
 	}

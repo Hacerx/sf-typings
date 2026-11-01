@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"sf-typings/internal/auth"
+	"sf-typings/internal/config"
 	"sf-typings/internal/jsonutil"
 )
 
@@ -128,6 +129,15 @@ func (q *graphQueue) Pop() any {
 // paths, including zero-cost hops. All traversal state is local to this attempt.
 // The caller owns edge semantics; transport validates each complete next batch.
 func DescribeGraphLevels(ctx context.Context, names []string, creds auth.Credentials, httpClient *http.Client, visit func(GraphNode, []byte) ([]GraphNode, error)) error {
+	return describeSelectedGraph(ctx, names, creds, httpClient, visit, false)
+}
+
+// DescribeSelectedGraph expands wildcard selectors against the org catalog before traversal.
+func DescribeSelectedGraph(ctx context.Context, selectors []string, creds auth.Credentials, client *http.Client, visit func(GraphNode, []byte) ([]GraphNode, error)) error {
+	return describeSelectedGraph(ctx, selectors, creds, client, visit, true)
+}
+
+func describeSelectedGraph(ctx context.Context, names []string, creds auth.Credentials, httpClient *http.Client, visit func(GraphNode, []byte) ([]GraphNode, error), expand bool) error {
 	queue := &graphQueue{}
 	best := make(map[string]int)
 	order := 0
@@ -140,10 +150,9 @@ func DescribeGraphLevels(ctx context.Context, names []string, creds auth.Credent
 		order++
 	}
 	for _, name := range names {
-		if !objectIdentifier.MatchString(name) {
+		if !objectIdentifier.MatchString(name) && !(expand && config.ValidObjectSelector(name)) {
 			return fmt.Errorf("invalid object name")
 		}
-		enqueue(GraphNode{name, 1})
 	}
 	if httpClient == nil {
 		httpClient = &http.Client{Timeout: 15 * time.Second}
@@ -185,6 +194,15 @@ func DescribeGraphLevels(ctx context.Context, names []string, creds auth.Credent
 	}
 	if version == "" {
 		return fmt.Errorf("invalid REST versions")
+	}
+	if expand {
+		names, err = expandSelectors(ctx, &client, base, version, creds.Token, names)
+		if err != nil {
+			return err
+		}
+	}
+	for _, name := range names {
+		enqueue(GraphNode{name, 1})
 	}
 	seen := make(map[string]bool)
 	for queue.Len() > 0 {
