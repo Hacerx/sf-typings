@@ -34,7 +34,7 @@ func runWithDeps(args []string, stdout, stderr io.Writer, local, fallback auth.R
 		return 1
 	}
 	if *help {
-		fmt.Fprint(stdout, usage+"Config: {\"orgAlias\":\"dev\",\"objects\":[\"Account\"],\"apexSources\":[\"classes\"],\"out\":\"generated\",\"snapshots\":false,\"allChildren\":false,\"filterRelatedObjects\":true,\"timeout\":\"35s\"}\nExplicit -out/-snapshots/-all-children/-timeout/-filter-related-objects override config, including empty out (invalid) and false. A nonempty output directory is required; -config/-help are bootstrap flags only.\nObjects use REST Describe. If local org URL is missing, sf org display supplies only the URL; sf org auth show-access-token supplies the fallback token. A local-token HTTP 401 triggers one token-only REST retry. Apex-only runs use local .cls files. Apex methods support nested List/arrays, Map keys serialized as strings/numbers, and reachable local AuraEnabled wrapper members; unresolved types remain unknown. Never retrieves records.\nObjects accept exact API names and case-sensitive '*' patterns (zero or more characters), e.g. AC_* or *__c; wildcard roots are expanded from the org catalog and deduplicated. No matching objects fails with: object patterns matched no objects. Related objects must match the selectors by default (JSON filterRelatedObjects: true); -filter-related-objects=false or JSON false restores unrestricted relationships. Explicit flags override JSON. Excluded relationships/imports are omitted, lookup IDs and complete snapshots remain intact. Configured objects are roots: allowed transitive parents are automatically described; self/mutual cycles are fetched once per object per attempt. Parent properties use type-only imports and polymorphic unions, are optional for query projections, and allow null when the ID is nillable. Snapshots cover every discovered object. Named visible child relationships are optional Apex-style T[] properties, not REST envelopes. By default only configured roots emit/discover children; -all-children enables recursive children through level 5: configured roots count as level 1, child edges add 1, and parent edges cost 0 without resetting the level. Level-5 objects emit/discover no children; transitive parents remain enabled. Shared objects use their shallowest level, and configured roots always start at 1. This bounds depth, not sibling count or breadth. It limits graph discovery, not nesting through recursive/shared interfaces. The graph shares one overall budget across auth, all Describe nodes and the single token retry: -timeout or JSON timeout sets a positive Go duration (e.g. 5m), default 35s. Invalid durations fail with: invalid timeout (use a positive Go duration, e.g. 5m). Per-request and auth CLI caps remain 15s. Permissions, timeout, or malformed metadata failures publish no new outputs.\n")
+		fmt.Fprint(stdout, usage+"Config: {\"orgAlias\":\"dev\",\"objects\":[\"Account\"],\"apexSources\":[\"classes\"],\"out\":\"generated\",\"snapshots\":false,\"allChildren\":false,\"filterRelatedObjects\":true,\"timeout\":\"35s\"}\nExplicit -out/-snapshots/-all-children/-timeout/-filter-related-objects override config, including empty out (invalid) and false. A nonempty output directory is required; -config/-help are bootstrap flags only.\nObjects use REST Describe. If local org URL is missing, sf org display supplies only the URL; sf org auth show-access-token supplies the fallback token. A local-token HTTP 401 triggers one token-only REST retry. Apex-only primitive/local-wrapper runs use local .cls files without org access. Apex methods support nested List/arrays, Map keys serialized as strings/numbers, and reachable local AuraEnabled wrapper members; external candidates use the org catalog and automatic Describe (including Schema-qualified names), requiring a valid orgAlias or failing with: invalid org alias. Unknown catalog names, SObject and Object remain unknown. Inferred roots do not broaden configured relationship selectors or default child emission. Apex is validated before network access; metadata failure publishes no outputs. Never retrieves records.\nObjects accept exact API names and case-sensitive '*' patterns (zero or more characters), e.g. AC_* or *__c; wildcard roots are expanded from the org catalog and deduplicated. No matching objects fails with: object patterns matched no objects. Related objects must match the selectors by default (JSON filterRelatedObjects: true); -filter-related-objects=false or JSON false restores unrestricted relationships. Explicit flags override JSON. Excluded relationships/imports are omitted, lookup IDs and complete snapshots remain intact. Configured objects are roots: allowed transitive parents are automatically described; self/mutual cycles are fetched once per object per attempt. Parent properties use type-only imports and polymorphic unions, are optional for query projections, and allow null when the ID is nillable. Snapshots cover every discovered object. Named visible child relationships are optional Apex-style T[] properties, not REST envelopes. By default only configured roots emit/discover children; -all-children enables recursive children through level 5: configured roots count as level 1, child edges add 1, and parent edges cost 0 without resetting the level. Level-5 objects emit/discover no children; transitive parents remain enabled. Shared objects use their shallowest level, and configured roots always start at 1. This bounds depth, not sibling count or breadth. It limits graph discovery, not nesting through recursive/shared interfaces. The graph shares one overall budget across auth, all Describe nodes and the single token retry: -timeout or JSON timeout sets a positive Go duration (e.g. 5m), default 35s. Invalid durations fail with: invalid timeout (use a positive Go duration, e.g. 5m). Per-request and auth CLI caps remain 15s. Permissions, timeout, or malformed metadata failures publish no new outputs.\n")
 		return 0
 	}
 	if *cfg == "" || flags.NArg() != 0 {
@@ -69,8 +69,18 @@ func runWithDeps(args []string, stdout, stderr io.Writer, local, fallback auth.R
 	apexCount, objectCount := 0, 0
 	if err == nil {
 		var files []generator.File
-		if len(c.Objects) > 0 {
-			files, err = objectOutputsSelected(context.Background(), c.OrgAlias, c.Objects, c.Snapshots, c.AllChildren, c.FilterRelatedObjects, budget, local, fallback, client)
+		var plan *generator.ApexPlan
+		plan, err = generator.AnalyzeApex(c.ApexSources)
+		var candidates []string
+		if err == nil {
+			candidates = plan.Candidates()
+		}
+		resolved := make(map[string]string)
+		if err == nil && len(candidates) > 0 && !config.ValidOrgAlias(c.OrgAlias) {
+			err = fmt.Errorf("invalid org alias")
+		}
+		if err == nil && (len(c.Objects) > 0 || len(candidates) > 0) {
+			files, err = objectOutputsApex(context.Background(), c.OrgAlias, c.Objects, candidates, resolved, c.Snapshots, c.AllChildren, c.FilterRelatedObjects, budget, local, fallback, client)
 			for _, file := range files {
 				if strings.HasSuffix(file.Name, ".d.ts") {
 					objectCount++
@@ -79,7 +89,7 @@ func runWithDeps(args []string, stdout, stderr io.Writer, local, fallback auth.R
 		}
 		var apexFiles []generator.File
 		if err == nil {
-			apexFiles, err = generator.ApexOutputs(c.ApexSources)
+			apexFiles, err = plan.Outputs(resolved)
 			apexCount = len(apexFiles)
 			files = append(files, apexFiles...)
 		}

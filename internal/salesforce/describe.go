@@ -138,6 +138,16 @@ func DescribeSelectedGraph(ctx context.Context, selectors []string, creds auth.C
 }
 
 func describeSelectedGraph(ctx context.Context, names []string, creds auth.Credentials, httpClient *http.Client, visit func(GraphNode, []byte) ([]GraphNode, error), expand bool) error {
+	return describeApexGraph(ctx, names, nil, nil, creds, httpClient, visit, expand)
+}
+
+// DescribeApexGraph classifies external Apex candidates using the same catalog,
+// version, traversal and retry attempt as the configured selectors.
+func DescribeApexGraph(ctx context.Context, selectors, candidates []string, resolved map[string]string, creds auth.Credentials, client *http.Client, visit func(GraphNode, []byte) ([]GraphNode, error)) error {
+	return describeApexGraph(ctx, selectors, candidates, resolved, creds, client, visit, true)
+}
+
+func describeApexGraph(ctx context.Context, names, candidates []string, resolved map[string]string, creds auth.Credentials, httpClient *http.Client, visit func(GraphNode, []byte) ([]GraphNode, error), expand bool) error {
 	queue := &graphQueue{}
 	best := make(map[string]int)
 	order := 0
@@ -196,7 +206,7 @@ func describeSelectedGraph(ctx context.Context, names []string, creds auth.Crede
 		return fmt.Errorf("invalid REST versions")
 	}
 	if expand {
-		names, err = expandSelectors(ctx, &client, base, version, creds.Token, names)
+		names, err = expandApexSelectors(ctx, &client, base, version, creds.Token, names, candidates, resolved)
 		if err != nil {
 			return err
 		}

@@ -104,6 +104,21 @@ func apexDeclaration(class *apexClass, types *apexTypes) (File, error) {
 
 // ApexOutputs renders sorted local Apex sources, rejecting duplicate classes.
 func ApexOutputs(sources []string) ([]File, error) {
+	plan, err := AnalyzeApex(sources)
+	if err != nil {
+		return nil, err
+	}
+	return plan.Outputs(nil)
+}
+
+// ApexPlan retains a validated AST and its reachable external type candidates.
+type ApexPlan struct {
+	types   *apexTypes
+	classes []*apexClass
+}
+
+// AnalyzeApex validates all sources and walks method/wrapper types before I/O.
+func AnalyzeApex(sources []string) (*ApexPlan, error) {
 	var paths []string
 	for _, source := range sources {
 		info, err := os.Lstat(source)
@@ -130,7 +145,7 @@ func ApexOutputs(sources []string) ([]File, error) {
 		}
 	}
 	sort.Strings(paths)
-	types := &apexTypes{classes: make(map[string]*apexClass)}
+	types := &apexTypes{classes: make(map[string]*apexClass), candidates: make(map[string]bool)}
 	var classes []*apexClass
 	seen := make(map[string]bool)
 	for _, path := range paths {
@@ -151,6 +166,31 @@ func ApexOutputs(sources []string) ([]File, error) {
 		classes = append(classes, class)
 	}
 	types.index()
+	plan := &ApexPlan{types: types, classes: classes}
+	if _, err := plan.Outputs(nil); err != nil {
+		return nil, err
+	}
+	return plan, nil
+}
+
+// Candidates returns sorted external names, not assumed sObject identities.
+func (p *ApexPlan) Candidates() []string {
+	var names []string
+	for name := range p.types.candidates {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
+}
+
+// Outputs resolves only catalog-confirmed object names; local wrappers win.
+func (p *ApexPlan) Outputs(objects map[string]string) ([]File, error) {
+	types, classes := p.types, p.classes
+	types.objects = objects
+	for _, c := range types.ordered {
+		c.reachable = false
+		c.fields = nil
+	}
 	var result []File
 	for _, class := range classes {
 		f, err := apexDeclaration(class, types)

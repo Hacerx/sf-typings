@@ -18,8 +18,10 @@ type apexClass struct {
 }
 
 type apexTypes struct {
-	classes map[string]*apexClass
-	ordered []*apexClass
+	classes    map[string]*apexClass
+	ordered    []*apexClass
+	candidates map[string]bool
+	objects    map[string]string
 }
 
 func apexModifiers(mods []parser.IModifierContext) (enabled, accessible, static, transient bool) {
@@ -81,13 +83,24 @@ func apexClassType(c *apexClass) string {
 	return fmt.Sprintf("import('@sf-typings/apex/%s').%s", c.owner, c.symbol)
 }
 
-// reference is the boundary for future Describe-backed resolution. Only classes
-// present in the local AST registry are wrappers; other references stay unknown.
+// reference resolves local wrappers before catalog-confirmed sObjects.
 func (r *apexTypes) reference(name string, scope *apexClass) (string, error) {
 	c := r.local(name, scope)
-	if c == nil || c.node.TypeRef() != nil {
+	if c == nil {
+		if strings.HasPrefix(strings.ToLower(name), "schema.") {
+			name = name[len("schema."):]
+		}
+		if apiName.MatchString(name) && !strings.EqualFold(name, "SObject") && !strings.EqualFold(name, "Object") {
+			r.candidates[name] = true
+			if object := r.objects[strings.ToLower(name)]; object != "" {
+				return fmt.Sprintf("import('./%s').%s", object, object), nil
+			}
+		}
 		return "unknown", nil
-	} // Inheritance needs an explicit serialized-member model.
+	}
+	if c.node.TypeRef() != nil {
+		return "unknown", nil // Inheritance needs an explicit serialized-member model.
+	}
 	if !c.reachable {
 		c.reachable = true // Mark before following fields: local/cross-file cycles terminate.
 		seen := make(map[string]bool)

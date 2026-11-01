@@ -19,7 +19,7 @@ func TestApexRecursiveTypesCLI(t *testing.T) {
 		"Orders": `public class Orders {
  @AuraEnabled public static Map<Id, List<Envelope[]>> fetch(Map<Integer, Map<String, Boolean>> counts, List<String[]> names) { return null; }
  @AuraEnabled global static Other exchange(Other value) { return null; }
- @AuraEnabled public static Account unresolved(Schema.Account row, Missing missing, Set<String> unsupported) { return null; }
+ @AuraEnabled public static SObject unresolved(SObject row, Object missing, Set<String> unsupported) { return null; }
  public class Envelope {
   @AuraEnabled public String label;
   @AuraEnabled public Integer first, second;

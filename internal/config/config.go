@@ -38,6 +38,9 @@ func ParseTimeout(value string) (time.Duration, error) {
 var apiName = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_]*$`)
 var aliasName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.-]*$`)
 
+// ValidOrgAlias validates an alias before inferred metadata access too.
+func ValidOrgAlias(alias string) bool { return aliasName.MatchString(alias) }
+
 // Load decodes one strict configuration and validates it before any org access.
 func Load(path string) (Config, error) {
 	c := Config{Timeout: DefaultTimeout.String(), FilterRelatedObjects: true}
@@ -68,7 +71,7 @@ func Load(path string) (Config, error) {
 	if len(c.Objects) == 0 && len(c.ApexSources) == 0 {
 		return c, fmt.Errorf("objects or apexSources must be nonempty")
 	}
-	if len(c.Objects) > 0 && !aliasName.MatchString(c.OrgAlias) {
+	if len(c.Objects) > 0 && !ValidOrgAlias(c.OrgAlias) {
 		return c, fmt.Errorf("invalid org alias")
 	}
 	for _, source := range c.ApexSources {
