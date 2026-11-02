@@ -2,6 +2,12 @@
 
 Generate TypeScript declarations from selected Salesforce objects and local Apex `.cls` files. This is an independent Go CLI; it does not retrieve Salesforce records or require a TypeScript content mapper.
 
+## License
+
+**Source-available, not OSI open-source.** Original sf-typings code is under [PolyForm Noncommercial 1.0.0](LICENSE), with the [required copyright notice](NOTICE). The standard license permits noncommercial purposes and specified personal and organizational uses; it is not personal-use-only. Commercial use not covered by LICENSE requires a separate written agreement from José Soler Martínez before use.
+
+See [commercial licensing](COMMERCIAL-LICENSING.md) and the [private-response request form](https://tally.so/r/DqBA5p). Responses are not publicly listed; Tally and José Soler Martínez process them. Submitting a request or receiving no response is not approval.
+
 ## Set up TypeScript in an SFDX project
 
 Install/build this Go CLI first and put the `sf-typings` executable on your PATH. From your **SFDX project root** (the directory containing `sfdx-project.json`):
