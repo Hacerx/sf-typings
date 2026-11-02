@@ -4,7 +4,7 @@ package main
 import (
 	"os"
 
-	"sf-typings/internal/cli"
+	"github.com/Hacerx/sf-typings/internal/cli"
 )
 
 func main() { os.Exit(cli.Run(os.Args[1:], os.Stdout, os.Stderr)) }

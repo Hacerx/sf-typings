@@ -38,6 +38,10 @@ func MockMain(m *testing.M) {
 			fmt.Fprintln(os.Stderr, "mock secret")
 			os.Exit(7)
 		}
+		if os.Getenv("SF_TYPINGS_RESPONSE") == "__capped_stdout__" {
+			fmt.Print(strings.Repeat("x", (1<<20)+1))
+			os.Exit(0)
+		}
 		fmt.Print(os.Getenv("SF_TYPINGS_RESPONSE"))
 		os.Exit(0)
 	}

@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"sf-typings/internal/auth"
+	"github.com/Hacerx/sf-typings/internal/auth"
 )
 
 func TestApexObjectsCLI(t *testing.T) {

@@ -8,8 +8,8 @@ import (
 	"sort"
 	"strings"
 
-	"sf-typings/internal/config"
-	"sf-typings/internal/jsonutil"
+	"github.com/Hacerx/sf-typings/internal/config"
+	"github.com/Hacerx/sf-typings/internal/jsonutil"
 )
 
 func expandSelectors(ctx context.Context, client *http.Client, base *url.URL, version, token string, selectors []string) ([]string, error) {

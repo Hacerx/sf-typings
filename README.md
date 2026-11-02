@@ -8,6 +8,43 @@ Generate TypeScript declarations from selected Salesforce objects and local Apex
 
 See [commercial licensing](COMMERCIAL-LICENSING.md) and the [private-response request form](https://tally.so/r/DqBA5p). Responses are not publicly listed; Tally and José Soler Martínez process them. Submitting a request or receiving no response is not approval.
 
+## Install
+
+### Download a binary (v1.0.0)
+
+Once published, download the archive for your OS and CPU from [Release v1.0.0](https://github.com/Hacerx/sf-typings/releases/tag/v1.0.0). Go is not required to run a prebuilt binary.
+
+| OS | amd64 (Intel/AMD x64) | arm64 |
+| --- | --- | --- |
+| Linux | `sf-typings_1.0.0_linux_amd64.tar.gz` | `sf-typings_1.0.0_linux_arm64.tar.gz` |
+| Windows | `sf-typings_1.0.0_windows_amd64.zip` | `sf-typings_1.0.0_windows_arm64.zip` |
+| macOS | `sf-typings_1.0.0_darwin_amd64.tar.gz` | `sf-typings_1.0.0_darwin_arm64.tar.gz` (Apple Silicon) |
+
+Download `SHA256SUMS` alongside the archive and verify its SHA-256 before extracting. On Linux, use `sha256sum --ignore-missing -c SHA256SUMS`; on macOS, compare `shasum -a 256 <archive>` with its entry; on Windows PowerShell, compare `Get-FileHash <archive> -Algorithm SHA256` with its entry. Keep `LICENSE` and `NOTICE` from the archive.
+
+Extract the archive and place `sf-typings` (or `sf-typings.exe` on Windows) in a directory on your `PATH`. On Unix, ensure it is executable with `chmod +x sf-typings`. Open a new terminal if you changed `PATH`, then run:
+
+```sh
+sf-typings -help
+```
+
+### Install with Go
+
+Requires Go 1.23 or later and the published `v1.0.0` tag:
+
+```sh
+go install github.com/Hacerx/sf-typings@v1.0.0
+sf-typings -help
+```
+
+Add `$(go env GOPATH)/bin` to your `PATH` (on Windows, the `bin` directory under `go env GOPATH`), or use your configured `GOBIN`. Installation compiles the CLI; it does not authenticate to Salesforce or install Salesforce CLI. Generation that needs an org still requires an authorized org as described below.
+
+### Maintainers: publish v1.0.0 manually
+
+After merging the release workflow into `main`, open **Actions → Release v1.0.0 → Run workflow** and select `main`. Only `workflow_dispatch` triggers it; pushes and tags do not. It runs the Go tests, cross-compiles all six OS/CPU targets with CGO disabled, packages the binaries with `LICENSE` and `NOTICE`, and publishes the archives plus `SHA256SUMS` in a GitHub Release. It creates the `v1.0.0` tag at the selected run's commit if absent. An existing tag must point to that same commit; an existing release is not overwritten. Before publication, the download links and versioned `go install` command are not available.
+
+All targets are cross-compiled on Ubuntu; this does not establish native execution on each OS/CPU. The workflow uses the repository's `GITHUB_TOKEN`, with `contents: write` only for the publish job; no personal token is needed. Repository policy must allow that permission. Running it publishes publicly: review the selected commit first.
+
 ## Set up TypeScript in an SFDX project
 
 Install/build this Go CLI first and put the `sf-typings` executable on your PATH. From your **SFDX project root** (the directory containing `sfdx-project.json`):

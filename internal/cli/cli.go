@@ -9,9 +9,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"sf-typings/internal/auth"
-	"sf-typings/internal/config"
-	"sf-typings/internal/generator"
+	"github.com/Hacerx/sf-typings/internal/auth"
+	"github.com/Hacerx/sf-typings/internal/config"
+	"github.com/Hacerx/sf-typings/internal/generator"
 )
 
 // Run executes the public CLI with explicit output streams and returns its exit status.

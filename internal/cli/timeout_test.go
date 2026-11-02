@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"sf-typings/internal/auth"
+	"github.com/Hacerx/sf-typings/internal/auth"
 )
 
 func timeoutConfig(t *testing.T, options map[string]any) (string, string) {

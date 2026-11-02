@@ -3,11 +3,12 @@ package auth
 import (
 	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
-	"sf-typings/internal/testutil"
+	"github.com/Hacerx/sf-typings/internal/testutil"
 )
 
 func mockTokenCLI(t *testing.T, response string) string {
@@ -74,7 +75,7 @@ func TestTokenCLIFallback(t *testing.T) {
 		{"no_token", `{"status":0,"result":{"instanceUrl":"https://evil.example"}}`, false},
 		{"bad_status", `{"status":1,"result":{"accessToken":"private-token"}}`, false},
 		{"process_failure", "__fail__", false},
-		{"capped_stdout", strings.Repeat("x", (1<<20)+1), false},
+		{"capped_stdout", "__capped_stdout__", false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			root := mockTokenCLI(t, tc.response)
@@ -89,6 +90,18 @@ func TestTokenCLIFallback(t *testing.T) {
 			assertCalls(t, root, tokenCall)
 		})
 	}
+}
+
+func TestCappedStdoutMock(t *testing.T) {
+	root := mockTokenCLI(t, "__capped_stdout__")
+	cmd := exec.Command("sf", "org", "auth", "show-access-token", "-o", "dev", "--no-prompt", "--json")
+	var stderr strings.Builder
+	cmd.Stderr = &stderr
+	stdout, err := cmd.Output()
+	if err != nil || stderr.String() != "" || len(stdout) <= 1<<20 {
+		t.Fatalf("mock stdout length=%d stderr=%q err=%v", len(stdout), stderr.String(), err)
+	}
+	assertCalls(t, root, "org auth show-access-token -o dev --no-prompt --json\n")
 }
 
 func TestMain(m *testing.M) { testutil.MockMain(m) }

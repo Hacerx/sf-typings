@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"sf-typings/internal/testutil"
+	"github.com/Hacerx/sf-typings/internal/testutil"
 )
 
 func fixture(t *testing.T, config any, response string) (string, string, []string) {

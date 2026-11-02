@@ -13,7 +13,7 @@ import (
 	"strings"
 	"testing"
 
-	"sf-typings/internal/auth"
+	"github.com/Hacerx/sf-typings/internal/auth"
 )
 
 // Run the injected CLI in a child so relative output never depends on a global chdir.

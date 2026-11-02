@@ -13,9 +13,9 @@ import (
 	"strings"
 	"time"
 
-	"sf-typings/internal/auth"
-	"sf-typings/internal/config"
-	"sf-typings/internal/jsonutil"
+	"github.com/Hacerx/sf-typings/internal/auth"
+	"github.com/Hacerx/sf-typings/internal/config"
+	"github.com/Hacerx/sf-typings/internal/jsonutil"
 )
 
 var restVersion = regexp.MustCompile(`^[0-9]+\.[0-9]+$`)

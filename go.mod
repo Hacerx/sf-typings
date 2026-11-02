@@ -1,4 +1,4 @@
-module sf-typings
+module github.com/Hacerx/sf-typings
 
 go 1.23
 

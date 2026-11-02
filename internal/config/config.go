@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"sf-typings/internal/jsonutil"
+	"github.com/Hacerx/sf-typings/internal/jsonutil"
 )
 
 // Config selects object metadata and local Apex sources for a single run.

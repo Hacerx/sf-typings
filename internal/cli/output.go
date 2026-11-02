@@ -5,7 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"sf-typings/internal/generator"
+	"github.com/Hacerx/sf-typings/internal/generator"
 )
 
 // inspectOutputDir checks every existing component without following symlinks.

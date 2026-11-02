@@ -6,10 +6,10 @@ import (
 	"net/http"
 	"time"
 
-	"sf-typings/internal/auth"
-	"sf-typings/internal/config"
-	"sf-typings/internal/generator"
-	"sf-typings/internal/salesforce"
+	"github.com/Hacerx/sf-typings/internal/auth"
+	"github.com/Hacerx/sf-typings/internal/config"
+	"github.com/Hacerx/sf-typings/internal/generator"
+	"github.com/Hacerx/sf-typings/internal/salesforce"
 )
 
 func objectOutputs(ctx context.Context, alias string, names []string, snapshots bool, local, fallback auth.Resolver, httpClient *http.Client) ([]generator.File, error) {

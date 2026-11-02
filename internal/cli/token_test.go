@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	"sf-typings/internal/auth"
+	"github.com/Hacerx/sf-typings/internal/auth"
 )
 
 func mockTokenCLI(t *testing.T, response string) string {

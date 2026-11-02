@@ -8,7 +8,7 @@ import (
 	"os/exec"
 	"time"
 
-	"sf-typings/internal/jsonutil"
+	"github.com/Hacerx/sf-typings/internal/jsonutil"
 
 	"github.com/hacerx/sf-auth-decrypt-go/authdecrypt"
 )

@@ -12,7 +12,7 @@ import (
 	"strings"
 	"testing"
 
-	"sf-typings/internal/auth"
+	"github.com/Hacerx/sf-typings/internal/auth"
 )
 
 const initUsage = "Usage: sf-typings -init-tsconfig [-config config.json] [-out generated]\n"

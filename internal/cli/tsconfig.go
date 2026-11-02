@@ -9,8 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"sf-typings/internal/config"
-	"sf-typings/internal/jsonutil"
+	"github.com/Hacerx/sf-typings/internal/config"
+	"github.com/Hacerx/sf-typings/internal/jsonutil"
 )
 
 const tsconfigUsage = "Usage: sf-typings -init-tsconfig [-config config.json] [-out generated]\n"

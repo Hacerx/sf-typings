@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"sf-typings/internal/jsonutil"
+	"github.com/Hacerx/sf-typings/internal/jsonutil"
 )
 
 const docsDescribe = `{"name":"Account","label":"Accounts","createable":false,"future":{"z":null,"a":900719925474099312345},"fields":[

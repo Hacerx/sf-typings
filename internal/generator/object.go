@@ -7,7 +7,7 @@ import (
 	"sort"
 	"strings"
 
-	"sf-typings/internal/jsonutil"
+	"github.com/Hacerx/sf-typings/internal/jsonutil"
 )
 
 // File is a generated artifact, held in memory until all inputs succeed.
