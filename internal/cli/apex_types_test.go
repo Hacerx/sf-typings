@@ -64,25 +64,25 @@ func TestApexRecursiveTypesCLI(t *testing.T) {
 	}
 	for _, want := range []string{
 		"counts: { [key: number]: { [key: string]: boolean } }; names: string[][]",
-		"Promise<{ [key: string]: import('@sf-typings/apex/Orders').Type2[][] }>",
-		"value: import('@sf-typings/apex/Other').Type4",
-		"Promise<import('@sf-typings/apex/Other').Type4>",
+		"Promise<{ [key: string]: import('@sf-typings/apex/Orders').Envelope[][] }>",
+		"value: import('@sf-typings/apex/Other').Other",
+		"Promise<import('@sf-typings/apex/Other').Other>",
 		"row: unknown; missing: unknown; unsupported: unknown",
 		"declare module '@sf-typings/apex/Orders'",
-		"export interface Type2", `"label": string;`, `"first": number;`, `"second": number;`,
-		`"other": import('@sf-typings/apex/Other').Type4;`,
-		`"next": import('@sf-typings/apex/Orders').Type2;`,
+		"export interface Envelope", `"label": string;`, `"first": number;`, `"second": number;`,
+		`"other": import('@sf-typings/apex/Other').Other;`,
+		`"next": import('@sf-typings/apex/Orders').Envelope;`,
 	} {
 		if !strings.Contains(string(orders), want) {
 			t.Errorf("missing %q in\n%s", want, orders)
 		}
 	}
-	for _, omitted := range []string{"secret", "shared", "omitted", "unannotated", "writeOnly", "privateGet", "unused", "export interface Type1", "export interface Type3"} {
+	for _, omitted := range []string{"secret", "shared", "omitted", "unannotated", "writeOnly", "privateGet", "unused", "export interface Orders", "export interface Unused", "export interface Type"} {
 		if strings.Contains(string(orders), omitted) {
 			t.Errorf("unexpected %q in\n%s", omitted, orders)
 		}
 	}
-	for _, want := range []string{`"envelope": import('@sf-typings/apex/Orders').Type2;`, `"children": { [key: string]: import('@sf-typings/apex/Other').Type4[] };`, `"active": boolean;`} {
+	for _, want := range []string{"export interface Other", `"envelope": import('@sf-typings/apex/Orders').Envelope;`, `"children": { [key: string]: import('@sf-typings/apex/Other').Other[] };`, `"active": boolean;`} {
 		if !strings.Contains(string(other), want) {
 			t.Errorf("missing %q in\n%s", want, other)
 		}
@@ -99,6 +99,64 @@ func TestApexRecursiveTypesCLI(t *testing.T) {
 		got, err := os.ReadFile(filepath.Join(root, "generated", name+".d.ts"))
 		if err != nil || string(got) != string(original) {
 			t.Fatalf("nondeterministic %s: %s %v", name, got, err)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(root, "invoked")); !os.IsNotExist(err) {
+		t.Fatalf("sf invoked: %v", err)
+	}
+}
+
+func TestApexWrapperNamesCLI(t *testing.T) {
+	root, binary, args := fixture(t, map[string]any{"apexSources": []string{}}, "")
+	var paths []string
+	for _, owner := range []string{"Orders", "Invoices"} {
+		source := `public class ` + owner + ` {
+ @AuraEnabled public static Box fetch() { return null; }
+ public class Box {
+  @AuraEnabled public boxValue value;
+  @AuraEnabled public Box next;
+  @AuraEnabled public type unsafeName;
+  @AuraEnabled public type_ safeName;
+ }
+ public class boxValue { @AuraEnabled public String label; }
+ public class type { @AuraEnabled public Boolean active; }
+ public class type_ { @AuraEnabled public Integer count; }
+}`
+		path := filepath.Join(root, owner+".cls")
+		if err := os.WriteFile(path, []byte(source), 0600); err != nil {
+			t.Fatal(err)
+		}
+		paths = append(paths, path)
+	}
+	cfg, _ := json.Marshal(map[string]any{"apexSources": paths})
+	if err := os.WriteFile(args[1], cfg, 0600); err != nil {
+		t.Fatal(err)
+	}
+	out, errs, code := runCLI(t, root, binary, "", args...)
+	if out != "Generated 0 object(s), 2 Apex class(es).\n" || errs != "" || code != 0 {
+		t.Fatalf("stdout=%q stderr=%q exit=%d", out, errs, code)
+	}
+	for _, owner := range []string{"Orders", "Invoices"} {
+		data, err := os.ReadFile(filepath.Join(root, "generated", owner+".d.ts"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, want := range []string{
+			"declare module '@sf-typings/apex/" + owner + "'",
+			"export interface Box {", "export interface boxValue {",
+			"export interface type_ {", "export interface type__ {",
+			`"unsafeName": import('@sf-typings/apex/` + owner + `').type__;`,
+			`"safeName": import('@sf-typings/apex/` + owner + `').type_;`,
+			"Promise<import('@sf-typings/apex/" + owner + "').Box>",
+			`"next": import('@sf-typings/apex/` + owner + `').Box;`,
+			`"value": import('@sf-typings/apex/` + owner + `').boxValue;`,
+		} {
+			if !strings.Contains(string(data), want) {
+				t.Errorf("missing %q in\n%s", want, data)
+			}
+		}
+		if strings.Contains(string(data), "export interface Type") {
+			t.Errorf("numeric wrapper name in\n%s", data)
 		}
 	}
 	if _, err := os.Stat(filepath.Join(root, "invoked")); !os.IsNotExist(err) {

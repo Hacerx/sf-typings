@@ -65,8 +65,29 @@ func (r *apexTypes) index() {
 		r.ordered = append(r.ordered, c)
 	}
 	sort.Slice(r.ordered, func(i, j int) bool { return r.ordered[i].name < r.ordered[j].name })
-	for i, c := range r.ordered {
-		c.symbol = fmt.Sprintf("Type%d", i+1)
+	// Reserve original bindings first so escaping an unsafe name cannot steal
+	// another wrapper's valid name. Symbols are isolated by ambient owner module.
+	used := make(map[string]map[string]bool)
+	for _, c := range r.ordered {
+		if used[c.owner] == nil {
+			used[c.owner] = make(map[string]bool)
+		}
+		name := c.node.Id().GetText()
+		if typeIdentifier(name) && !used[c.owner][name] {
+			c.symbol = name
+			used[c.owner][name] = true
+		}
+	}
+	for _, c := range r.ordered {
+		if c.symbol != "" {
+			continue
+		}
+		name := c.node.Id().GetText() + "_"
+		for !typeIdentifier(name) || used[c.owner][name] {
+			name += "_"
+		}
+		c.symbol = name
+		used[c.owner][name] = true
 	}
 }
 
