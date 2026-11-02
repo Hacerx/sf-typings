@@ -29,6 +29,7 @@ func TestLoad(t *testing.T) {
 		{"zero timeout", `{"apexSources":["classes"],"timeout":"0"}`, "invalid timeout (use a positive Go duration, e.g. 5m)"},
 		{"negative timeout", `{"apexSources":["classes"],"timeout":"-1s"}`, "invalid timeout (use a positive Go duration, e.g. 5m)"},
 		{"overflow timeout", `{"apexSources":["classes"],"timeout":"999999999999999999999h"}`, "invalid timeout (use a positive Go duration, e.g. 5m)"},
+		{"empty output", `{"apexSources":["classes"],"out":""}`, ""},
 		{"execution options", `{"apexSources":["classes"],"out":"generated","snapshots":true,"allChildren":true}`, ""},
 		{"wrong output type", `{"apexSources":["classes"],"out":false}`, "invalid config JSON"},
 		{"wrong snapshots type", `{"apexSources":["classes"],"snapshots":"true"}`, "invalid config JSON"},
@@ -85,6 +86,16 @@ func TestLoad(t *testing.T) {
 			}
 			if got.Timeout != wantTimeout {
 				t.Fatalf("timeout=%q want=%q", got.Timeout, wantTimeout)
+			}
+			wantOut := DefaultOut
+			if tc.name == "execution options" || tc.name == "case-insensitive valid options" {
+				wantOut = "generated"
+			}
+			if tc.name == "empty output" {
+				wantOut = ""
+			}
+			if got.Out != wantOut {
+				t.Fatalf("out=%q want=%q", got.Out, wantOut)
 			}
 			if tc.name == "execution options" && (got.Out != "generated" || !got.Snapshots || !got.AllChildren) {
 				t.Fatalf("options=%+v", got)

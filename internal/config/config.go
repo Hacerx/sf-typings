@@ -24,6 +24,9 @@ type Config struct {
 	Timeout              string   `json:"timeout"`
 }
 
+// DefaultOut is the output root relative to the CLI working directory.
+const DefaultOut = "sf-typings"
+
 // DefaultTimeout is the shared authentication and Describe graph budget.
 const DefaultTimeout = 35 * time.Second
 
@@ -54,7 +57,7 @@ func ValidateOnly(value string) error {
 
 // Load decodes one strict configuration and validates it before any org access.
 func Load(path string) (Config, error) {
-	c := Config{Timeout: DefaultTimeout.String(), FilterRelatedObjects: true, Only: "all"}
+	c := Config{Out: DefaultOut, Timeout: DefaultTimeout.String(), FilterRelatedObjects: true, Only: "all"}
 	b, err := os.ReadFile(path)
 	if err != nil {
 		return c, fmt.Errorf("cannot read config")

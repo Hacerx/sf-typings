@@ -1,7 +1,7 @@
 {
   "orgAlias": "dev",
   "objects": ["Account", "Contact"],
-  "out": "generated",
+  "out": "sf-typings",
   "only": "all",
   "snapshots": false,
   "allChildren": false,
