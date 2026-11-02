@@ -5,7 +5,10 @@
     "moduleResolution": "Bundler",
     "strict": true,
     "noEmit": true,
-    "types": ["@salesforce/lightning-types"]
+    "types": ["@salesforce/lightning-types"],
+    "paths": {
+      "@sf-typing/*": ["./sf-typings/*"]
+    }
   },
   "include": ["force-app/**/*.ts", "sf-typings/**/*.d.ts"],
   "exclude": ["node_modules"]

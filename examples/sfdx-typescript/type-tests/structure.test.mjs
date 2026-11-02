@@ -22,6 +22,15 @@ test('source package has matching metadata and a record-independent Apex test', 
     assert.match(read(`${component}.js-meta.xml`), /lightning__AppPage/);
 });
 
+test('generated object types use the project-relative alias', () => {
+    const config = JSON.parse(read('tsconfig.json'));
+    assert.deepEqual(config.compilerOptions.paths, { '@sf-typing/*': ['./sf-typings/*'] });
+    for (const source of [`${component}.ts`, 'type-tests/apex-contract.ts']) {
+        assert.match(read(source), /import type \{ Account \} from '@sf-typing\/sobjects\/Account';/);
+        assert.doesNotMatch(read(source), /from ['"]\.\.\//);
+    }
+});
+
 test('strict source checking and JS-only deployment remain separate', () => {
     const config = JSON.parse(read('tsconfig.json'));
     assert.equal(config.compilerOptions.strict, true);
@@ -34,9 +43,9 @@ test('strict source checking and JS-only deployment remain separate', () => {
     for (const version of Object.values(pkg.devDependencies)) assert.match(version, /^\d+\.\d+\.\d+$/);
     assert.equal(pkg.scripts.build, 'npm run typecheck && tsc -p tsconfig.json --noEmit false');
     for (const pattern of ['**/*.ts', '**/*.d.ts', 'node_modules/**', 'sf-typings/**', 'type-tests/**']) {
-        assert.ok(read('.forceignore').split('\n').includes(pattern), pattern);
+        assert.ok(read('.forceignore').split(/\r?\n/).includes(pattern), pattern);
     }
-    assert.ok(!read('.forceignore').split('\n').includes('**/*.js'));
+    assert.ok(!read('.forceignore').split(/\r?\n/).includes('**/*.js'));
     assert.ok(read('.gitignore').includes(`${component}.js`));
     assert.ok(existsSync(new URL('../package-lock.json', import.meta.url)));
 });

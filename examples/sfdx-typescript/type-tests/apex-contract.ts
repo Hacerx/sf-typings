@@ -1,6 +1,6 @@
 import getExample from '@salesforce/apex/SfTypingsExampleController.getExample';
 import type { SfTypingsExampleResult } from '@sf-typings/apex/SfTypingsExampleResult';
-import type { Account } from '../sf-typings/sobjects/Account';
+import type { Account } from '@sf-typing/sobjects/Account';
 
 // Compile-only consumer: never deployed or executed.
 async function checkContract(): Promise<void> {

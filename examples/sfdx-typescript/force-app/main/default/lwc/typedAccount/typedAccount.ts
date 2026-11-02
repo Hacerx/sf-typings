@@ -1,7 +1,7 @@
 import { LightningElement } from 'lwc';
 import getExample from '@salesforce/apex/SfTypingsExampleController.getExample';
 import type { SfTypingsExampleResult } from '@sf-typings/apex/SfTypingsExampleResult';
-import type { Account } from '../../../../../sf-typings/sobjects/Account';
+import type { Account } from '@sf-typing/sobjects/Account';
 
 export default class TypedAccount extends LightningElement {
     message = 'Loading a synthetic account…';
