@@ -52,6 +52,20 @@ go run . -config config.json -all-children -timeout 5m
 
 Copy `config.example.json` to `config.json` and choose the objects you need. For Apex classes, add `"apexSources": ["/path/to/your/sfdx-project/force-app/main/default/classes"]` (a file or recursively scanned directory). Paths in `apexSources` are resolved relative to **the CLI working directory**, not the config file. For an offline primitive/local-wrapper Apex run use `{"apexSources":["/path/to/your/classes"]}`; no org alias, `sf`, or output option is needed. External type candidates require `orgAlias` for catalog classification and automatic Describe. At least one object or Apex source is required. `-config` is required for generation (not for `-init-tsconfig`). By default, declarations are written to `sf-typings/` in the CLI working directory: invoke the CLI from your project's root to generate them there. No project-root discovery is performed. JSON `out` or explicit `-out` replaces the output root directly (CLI overrides JSON), without appending `sf-typings`.
 
+### Selecting Apex source folders
+
+Run from your SFDX project root and use `"apexSources": ["force-app"]` to parse every `.cls` file anywhere under `force-app`, including nested folders such as `main/default/classes`. Other file types are ignored. Entries must be concrete file or directory paths; TypeScript-style glob patterns such as `force-app/**/*.cls` are not supported.
+
+If `sfdx-project.json` lists multiple `packageDirectories`, add each directory that contains Apex classes to `apexSources`. Apex generation does **not** read that list automatically. For example, for package directory paths `force-app` and `packages/shared`, use:
+
+```json
+{
+  "apexSources": ["force-app", "packages/shared"]
+}
+```
+
+You can use `"apexSources": ["."]` to scan the entire project recursively, but explicit package directories avoid picking up unrelated example or fixture classes that could cause duplicate-class errors. All these relative paths resolve from the CLI working directory, not the configuration file.
+
 All runtime options can be set in the strict JSON configuration:
 
 ```json
