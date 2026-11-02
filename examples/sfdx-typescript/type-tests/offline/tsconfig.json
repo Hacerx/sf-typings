@@ -1,0 +1,5 @@
+{
+  "extends": "../../tsconfig.json",
+  "include": ["consumer.ts", "../official-types.ts", "../../.build/offline/**/*.d.ts"],
+  "exclude": ["../../node_modules"]
+}

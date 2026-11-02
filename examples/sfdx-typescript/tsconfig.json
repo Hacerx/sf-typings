@@ -1,0 +1,12 @@
+{
+  "compilerOptions": {
+    "target": "ESNext",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "strict": true,
+    "noEmit": true,
+    "types": ["@salesforce/lightning-types"]
+  },
+  "include": ["force-app/**/*.ts", "sf-typings/**/*.d.ts"],
+  "exclude": ["node_modules"]
+}

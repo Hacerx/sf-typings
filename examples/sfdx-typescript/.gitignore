@@ -1,0 +1,8 @@
+node_modules/
+sf-typings/
+.sf/
+.sfdx/
+.build/
+*.tsbuildinfo
+force-app/main/default/lwc/typedAccount/typedAccount.js
+force-app/main/default/lwc/typedAccount/typedAccount.js.map

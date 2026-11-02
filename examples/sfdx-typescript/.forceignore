@@ -1,0 +1,15 @@
+**/*.ts
+**/*.d.ts
+**/*.js.map
+node_modules/**
+sf-typings/**
+type-tests/**
+.sf/**
+.sfdx/**
+.build/**
+.gitignore
+package.json
+package-lock.json
+tsconfig.json
+sf-typings.config.json
+README.md

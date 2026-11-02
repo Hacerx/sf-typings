@@ -1,0 +1,6 @@
+{
+  "orgAlias": "dev",
+  "objects": ["Account"],
+  "apexSources": ["force-app/main/default/classes"],
+  "filterRelatedObjects": true
+}
