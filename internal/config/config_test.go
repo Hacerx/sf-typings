@@ -10,6 +10,12 @@ import (
 func TestLoad(t *testing.T) {
 	for _, tc := range []struct{ name, raw, want string }{
 		{"invalid JSON", `{`, "invalid config JSON"},
+		{"only apex", `{"apexSources":["classes"],"only":"apex"}`, ""},
+		{"only sobjects", `{"orgAlias":"dev","objects":["Account"],"only":"sobjects"}`, ""},
+		{"empty only", `{"apexSources":["classes"],"only":""}`, "invalid only (use all, apex, or sobjects)"},
+		{"invalid only", `{"apexSources":["classes"],"only":"ALL"}`, "invalid only (use all, apex, or sobjects)"},
+		{"null only", `{"apexSources":["classes"],"ONLY":null}`, "invalid config JSON"},
+		{"wrong only", `{"apexSources":["classes"],"only":true}`, "invalid config JSON"},
 		{"filter default", `{"orgAlias":"dev","objects":["AC_*","*__c"]}`, ""},
 		{"filter false", `{"apexSources":["classes"],"filterRelatedObjects":false}`, ""},
 		{"null filter", `{"apexSources":["classes"],"filterRelatedObjects":null}`, "invalid config JSON"},
@@ -66,6 +72,16 @@ func TestLoad(t *testing.T) {
 			wantTimeout := "35s"
 			if tc.name == "timeout" {
 				wantTimeout = "5m"
+			}
+			wantOnly := "all"
+			if tc.name == "only apex" {
+				wantOnly = "apex"
+			}
+			if tc.name == "only sobjects" {
+				wantOnly = "sobjects"
+			}
+			if got.Only != wantOnly {
+				t.Fatalf("only=%q want=%q", got.Only, wantOnly)
 			}
 			if got.Timeout != wantTimeout {
 				t.Fatalf("timeout=%q want=%q", got.Timeout, wantTimeout)

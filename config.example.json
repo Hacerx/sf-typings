@@ -2,6 +2,7 @@
   "orgAlias": "dev",
   "objects": ["Account", "Contact"],
   "out": "generated",
+  "only": "all",
   "snapshots": false,
   "allChildren": false,
   "filterRelatedObjects": true,

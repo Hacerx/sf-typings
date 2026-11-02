@@ -8,23 +8,56 @@ import (
 	"sf-typings/internal/generator"
 )
 
-func save(dir string, files []generator.File) error {
-	if info, err := os.Lstat(dir); err == nil && !info.IsDir() {
-		return fmt.Errorf("unsafe output directory")
-	} else if err != nil && !os.IsNotExist(err) {
+// inspectOutputDir checks every existing component without following symlinks.
+func inspectOutputDir(dir string) error {
+	dir, err := filepath.Abs(dir)
+	if err != nil {
 		return fmt.Errorf("cannot inspect output directory")
 	}
-	if err := os.MkdirAll(dir, 0700); err != nil {
-		return fmt.Errorf("cannot create output directory")
+	for {
+		info, err := os.Lstat(dir)
+		if err == nil && !info.IsDir() {
+			return fmt.Errorf("unsafe output directory")
+		}
+		if err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("cannot inspect output directory")
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return nil
+		}
+		dir = parent
 	}
-	// Reject non-regular targets before touching any generated file.
+}
+
+func save(dir string, files []generator.File) error {
+	if err := inspectOutputDir(dir); err != nil {
+		return err
+	}
+	// Validate ALL directories and targets before staging or publishing anything.
+	// In particular, a later sobjects/ symlink must not permit an earlier Apex write.
 	for _, f := range files {
-		info, err := os.Lstat(filepath.Join(dir, f.Name))
+		if !filepath.IsLocal(f.Name) || filepath.ToSlash(filepath.Clean(f.Name)) != filepath.ToSlash(f.Name) || f.Name == "." {
+			return fmt.Errorf("unsafe output target")
+		}
+		target := filepath.Join(dir, f.Name)
+		if err := inspectOutputDir(filepath.Dir(target)); err != nil {
+			return err
+		}
+		info, err := os.Lstat(target)
 		if err == nil && !info.Mode().IsRegular() {
 			return fmt.Errorf("unsafe output target")
 		}
 		if err != nil && !os.IsNotExist(err) {
 			return fmt.Errorf("cannot inspect output target")
+		}
+	}
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		return fmt.Errorf("cannot create output directory")
+	}
+	for _, f := range files {
+		if err := os.MkdirAll(filepath.Dir(filepath.Join(dir, f.Name)), 0700); err != nil {
+			return fmt.Errorf("cannot create output directory")
 		}
 	}
 	type staged struct{ target, temp string }

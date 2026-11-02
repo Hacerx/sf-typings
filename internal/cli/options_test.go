@@ -77,7 +77,7 @@ func TestExecutionOptions(t *testing.T) {
 			if tc.wantCLI {
 				dir = "cli-out"
 			}
-			if _, err := os.Stat(filepath.Join(root, dir, "Orders.d.ts")); err != nil {
+			if _, err := os.Stat(filepath.Join(root, dir, "apex", "Orders.d.ts")); err != nil {
 				t.Fatal(err)
 			}
 		})

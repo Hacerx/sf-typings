@@ -96,18 +96,18 @@ func TestWildcardObjects(t *testing.T) {
 				t.Fatalf("exit=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
 			}
 			for _, name := range tc.want {
-				if _, err := os.Stat(filepath.Join(outDir, name+".d.ts")); err != nil {
+				if _, err := os.Stat(filepath.Join(outDir, "sobjects", name+".d.ts")); err != nil {
 					t.Fatal(err)
 				}
 				if calls["/services/data/v60.0/sobjects/"+name+"/describe"] != 1 {
 					t.Fatalf("calls=%v", calls)
 				}
 			}
-			entries, _ := os.ReadDir(outDir)
-			if len(entries) != len(tc.want)*2+1 {
+			entries, _ := os.ReadDir(filepath.Join(outDir, "sobjects"))
+			if len(entries) != len(tc.want)*2 {
 				t.Fatalf("files=%v", entries)
 			}
-			declaration, _ := os.ReadFile(filepath.Join(outDir, "AC_A__c.d.ts"))
+			declaration, _ := os.ReadFile(filepath.Join(outDir, "sobjects", "AC_A__c.d.ts"))
 			filtered := len(tc.want) < 3 || tc.name == "suffix" || tc.name == "overlap"
 			if filtered && strings.Contains(string(declaration), `from "./Account"`) {
 				t.Fatalf("excluded import: %s", declaration)
@@ -115,7 +115,7 @@ func TestWildcardObjects(t *testing.T) {
 			if len(tc.want) == 1 && strings.Contains(string(declaration), "Who?:") {
 				t.Fatalf("excluded relationship: %s", declaration)
 			}
-			snapshot, _ := os.ReadFile(filepath.Join(outDir, "AC_A__c.describe.json"))
+			snapshot, _ := os.ReadFile(filepath.Join(outDir, "sobjects", "AC_A__c.describe.json"))
 			if !strings.Contains(string(snapshot), "Account") || !strings.Contains(string(snapshot), "Other__c") {
 				t.Fatalf("snapshot pruned: %s", snapshot)
 			}

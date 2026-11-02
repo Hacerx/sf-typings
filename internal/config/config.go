@@ -17,6 +17,7 @@ type Config struct {
 	Objects              []string `json:"objects"`
 	ApexSources          []string `json:"apexSources"`
 	Out                  string   `json:"out"`
+	Only                 string   `json:"only"`
 	Snapshots            bool     `json:"snapshots"`
 	AllChildren          bool     `json:"allChildren"`
 	FilterRelatedObjects bool     `json:"filterRelatedObjects"`
@@ -41,9 +42,19 @@ var aliasName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.-]*$`)
 // ValidOrgAlias validates an alias before inferred metadata access too.
 func ValidOrgAlias(alias string) bool { return aliasName.MatchString(alias) }
 
+// ValidateOnly accepts the category selector without normalizing explicit input.
+func ValidateOnly(value string) error {
+	switch value {
+	case "all", "apex", "sobjects":
+		return nil
+	default:
+		return fmt.Errorf("invalid only (use all, apex, or sobjects)")
+	}
+}
+
 // Load decodes one strict configuration and validates it before any org access.
 func Load(path string) (Config, error) {
-	c := Config{Timeout: DefaultTimeout.String(), FilterRelatedObjects: true}
+	c := Config{Timeout: DefaultTimeout.String(), FilterRelatedObjects: true, Only: "all"}
 	b, err := os.ReadFile(path)
 	if err != nil {
 		return c, fmt.Errorf("cannot read config")
@@ -59,11 +70,14 @@ func Load(path string) (Config, error) {
 	}
 	for key, value := range values {
 		switch strings.ToLower(key) {
-		case "out", "snapshots", "allchildren", "timeout", "filterrelatedobjects":
+		case "out", "only", "snapshots", "allchildren", "timeout", "filterrelatedobjects":
 			if value == nil {
 				return c, fmt.Errorf("invalid config JSON")
 			}
 		}
+	}
+	if err := ValidateOnly(c.Only); err != nil {
+		return c, err
 	}
 	if _, err := ParseTimeout(c.Timeout); err != nil {
 		return c, err

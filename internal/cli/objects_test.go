@@ -184,7 +184,7 @@ func TestREST401FallbackRunWithDeps(t *testing.T) {
 			if err := os.WriteFile(cfg, []byte(`{"orgAlias":"dev","objects":["Account"]}`), 0600); err != nil {
 				t.Fatal(err)
 			}
-			prior := filepath.Join(root, "output", "Account.d.ts")
+			prior := filepath.Join(root, "output", "sobjects", "Account.d.ts")
 			if err := os.MkdirAll(filepath.Dir(prior), 0700); err != nil {
 				t.Fatal(err)
 			}
@@ -244,7 +244,7 @@ func TestREST401FallbackRunWithDeps(t *testing.T) {
 				return auth.Credentials{token, tc.fallbackURL}, nil
 			}
 			var out, errs strings.Builder
-			code := runWithDeps([]string{"-config", cfg, "-out", filepath.Dir(prior)}, &out, &errs, local, fallback, client)
+			code := runWithDeps([]string{"-config", cfg, "-out", filepath.Dir(filepath.Dir(prior))}, &out, &errs, local, fallback, client)
 			if fallbackCalls != tc.wantFallback || code != tc.wantCode || errs.String() != tc.wantError {
 				t.Fatalf("fallback=%d exit=%d stdout=%q stderr=%q requests=%v", fallbackCalls, code, out.String(), errs.String(), requests)
 			}
@@ -314,7 +314,7 @@ func TestMissingLocalURLRESTWithDisplayOnly(t *testing.T) {
 	if code != 0 || stderr.String() != "" || stdout.String() != "Generated 1 object(s).\n" {
 		t.Fatalf("stdout=%q stderr=%q exit=%d", stdout.String(), stderr.String(), code)
 	}
-	if _, err := os.Stat(filepath.Join(root, "generated", "Account.d.ts")); err != nil {
+	if _, err := os.Stat(filepath.Join(root, "generated", "sobjects", "Account.d.ts")); err != nil {
 		t.Fatal(err)
 	}
 	log, err := os.ReadFile(filepath.Join(root, "invoked"))
@@ -341,8 +341,8 @@ func TestRESTRunWithDeps(t *testing.T) {
 			if err := os.WriteFile(cfg, data, 0600); err != nil {
 				t.Fatal(err)
 			}
-			outDir := filepath.Join(root, "generated")
-			if err := os.Mkdir(outDir, 0700); err != nil {
+			outDir := filepath.Join(root, "generated", "sobjects")
+			if err := os.MkdirAll(outDir, 0700); err != nil {
 				t.Fatal(err)
 			}
 			prior := filepath.Join(outDir, "Account.d.ts")
@@ -378,7 +378,7 @@ func TestRESTRunWithDeps(t *testing.T) {
 				return transport.RoundTrip(clone)
 			})}
 			var out, errs strings.Builder
-			status := runWithDeps([]string{"-config", cfg, "-out", outDir, "-snapshots"}, &out, &errs,
+			status := runWithDeps([]string{"-config", cfg, "-out", filepath.Dir(outDir), "-snapshots"}, &out, &errs,
 				func(context.Context, string) (auth.Credentials, error) {
 					return auth.Credentials{"private-token", "https://sample.my.salesforce.com"}, nil
 				},

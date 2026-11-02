@@ -114,7 +114,7 @@ func (r *apexTypes) reference(name string, scope *apexClass) (string, error) {
 		if apiName.MatchString(name) && !strings.EqualFold(name, "SObject") && !strings.EqualFold(name, "Object") {
 			r.candidates[name] = true
 			if object := r.objects[strings.ToLower(name)]; object != "" {
-				return fmt.Sprintf("import('./%s').%s", object, object), nil
+				return fmt.Sprintf("import('../sobjects/%s').%s", object, object), nil
 			}
 		}
 		return "unknown", nil

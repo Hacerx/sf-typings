@@ -147,27 +147,27 @@ func TestApexObjectsCLI(t *testing.T) {
 			if code != 0 || out.String() != wantOut || errs.String() != "" {
 				t.Fatalf("exit=%d stdout=%q stderr=%q", code, out.String(), errs.String())
 			}
-			data, err := os.ReadFile(filepath.Join(dest, "Orders.d.ts"))
+			data, err := os.ReadFile(filepath.Join(dest, "apex", "Orders.d.ts"))
 			if err != nil {
 				t.Fatal(err)
 			}
 			if mode == "offline" {
-				if strings.Contains(string(data), "import('./Account')") || !strings.Contains(string(data), `"name": string;`) {
+				if strings.Contains(string(data), "import('../sobjects/Account')") || !strings.Contains(string(data), `"name": string;`) {
 					t.Fatalf("local shadow: %s", data)
 				}
 				return
 			}
 			for _, want := range []string{
-				"row: import('./Account').Account", "Promise<import('./Account').Account>",
-				"rows: import('./Account').Account[]", `"rows": { [key: string]: import('./Contact').Contact[] }`,
+				"row: import('../sobjects/Account').Account", "Promise<import('../sobjects/Account').Account>",
+				"rows: import('../sobjects/Account').Account[]", `"rows": { [key: string]: import('../sobjects/Contact').Contact[] }`,
 				`"missing": unknown`, `"generic": unknown`, `"value": unknown`,
 			} {
 				if !strings.Contains(string(data), want) {
 					t.Errorf("missing %q in %s", want, data)
 				}
 			}
-			account, _ := os.ReadFile(filepath.Join(dest, "Account.d.ts"))
-			contact, _ := os.ReadFile(filepath.Join(dest, "Contact.d.ts"))
+			account, _ := os.ReadFile(filepath.Join(dest, "sobjects", "Account.d.ts"))
+			contact, _ := os.ReadFile(filepath.Join(dest, "sobjects", "Contact.d.ts"))
 			if strings.Contains(string(contact), "Unrelated?") {
 				t.Fatalf("broadened children: %s", contact)
 			}

@@ -15,7 +15,7 @@ import (
 
 func TestDescribeDocsRunWithDeps(t *testing.T) {
 	root := t.TempDir()
-	cfg, dest := filepath.Join(root, "config.json"), filepath.Join(root, "Account.d.ts")
+	cfg, dest := filepath.Join(root, "config.json"), filepath.Join(root, "sobjects", "Account.d.ts")
 	if err := os.WriteFile(cfg, []byte(`{"orgAlias":"dev","objects":["Account"]}`), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -51,7 +51,7 @@ func TestDescribeDocsRunWithDeps(t *testing.T) {
 			t.Errorf("public output retained irrelevant metadata %s: %s", noise, decl)
 		}
 	}
-	snapshotPath := filepath.Join(root, "Account.describe.json")
+	snapshotPath := filepath.Join(root, "sobjects", "Account.describe.json")
 	snapshot, err := os.ReadFile(snapshotPath)
 	if err != nil || string(snapshot) != string(docsGenerate(t, body)[1].Data) {
 		t.Fatalf("snapshot changed: %v", err)

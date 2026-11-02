@@ -21,7 +21,7 @@ func TestParentGraphRun(t *testing.T) {
 		t.Run(mode, func(t *testing.T) {
 			root := t.TempDir()
 			cfg := filepath.Join(root, "config.json")
-			out := filepath.Join(root, "out")
+			out := filepath.Join(root, "out", "sobjects")
 			if err := os.WriteFile(cfg, []byte(`{"orgAlias":"dev","filterRelatedObjects":false,"objects":["Contact"]}`), 0600); err != nil {
 				t.Fatal(err)
 			}
@@ -87,7 +87,7 @@ func TestParentGraphRun(t *testing.T) {
 				return auth.Credentials{Token: "fresh"}, nil
 			}
 			var stdout, stderr bytes.Buffer
-			code := runWithDeps([]string{"-config", cfg, "-out", out, "-snapshots"}, &stdout, &stderr, local, fallback, client)
+			code := runWithDeps([]string{"-config", cfg, "-out", filepath.Dir(out), "-snapshots"}, &stdout, &stderr, local, fallback, client)
 			wantRequests := []string{"/services/data/", "/services/data/v60.0/sobjects/Contact/describe"}
 			if mode != "malformed" {
 				wantRequests = append(wantRequests, "/services/data/v60.0/sobjects/Account/describe")

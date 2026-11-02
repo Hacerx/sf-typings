@@ -54,11 +54,11 @@ func TestApexRecursiveTypesCLI(t *testing.T) {
 	if out != "Generated 0 object(s), 2 Apex class(es).\n" || errs != "" || code != 0 {
 		t.Fatalf("stdout=%q stderr=%q exit=%d", out, errs, code)
 	}
-	orders, err := os.ReadFile(filepath.Join(root, "generated", "Orders.d.ts"))
+	orders, err := os.ReadFile(filepath.Join(root, "generated", "apex", "Orders.d.ts"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	other, err := os.ReadFile(filepath.Join(root, "generated", "Other.d.ts"))
+	other, err := os.ReadFile(filepath.Join(root, "generated", "apex", "Other.d.ts"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -96,7 +96,7 @@ func TestApexRecursiveTypesCLI(t *testing.T) {
 		t.Fatalf("repeat stdout=%q stderr=%q exit=%d", out, errs, code)
 	}
 	for name, original := range map[string][]byte{"Orders": orders, "Other": other} {
-		got, err := os.ReadFile(filepath.Join(root, "generated", name+".d.ts"))
+		got, err := os.ReadFile(filepath.Join(root, "generated", "apex", name+".d.ts"))
 		if err != nil || string(got) != string(original) {
 			t.Fatalf("nondeterministic %s: %s %v", name, got, err)
 		}
@@ -137,7 +137,7 @@ func TestApexWrapperNamesCLI(t *testing.T) {
 		t.Fatalf("stdout=%q stderr=%q exit=%d", out, errs, code)
 	}
 	for _, owner := range []string{"Orders", "Invoices"} {
-		data, err := os.ReadFile(filepath.Join(root, "generated", owner+".d.ts"))
+		data, err := os.ReadFile(filepath.Join(root, "generated", "apex", owner+".d.ts"))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -164,7 +164,7 @@ func TestApexWrapperNamesCLI(t *testing.T) {
 	}
 }
 
-// Exercise the existing publication collision gate, not the generator alone.
+// Equal basenames in different categories must coexist; legacy flat files stay untouched.
 func TestApexOutputCollisionCLI(t *testing.T) {
 	root := t.TempDir()
 	source := filepath.Join(root, "Account.cls")
@@ -204,13 +204,14 @@ func TestApexOutputCollisionCLI(t *testing.T) {
 			t.Fatal("unexpected fallback")
 			return auth.Credentials{}, nil
 		}, client)
-	if out.String() != "" || errs.String() != "sf-typings: duplicate output name\n" || code != 1 || calls != 2 {
+	if out.String() != "Generated 1 object(s), 1 Apex class(es).\n" || errs.String() != "" || code != 0 || calls != 2 {
 		t.Fatalf("stdout=%q stderr=%q exit=%d calls=%d", out.String(), errs.String(), code, calls)
 	}
 	assertUnchanged(t, prior)
-	entries, err := os.ReadDir(dest)
-	if err != nil || len(entries) != 1 {
-		t.Fatalf("outputs=%v err=%v", entries, err)
+	for _, category := range []string{"apex", "sobjects"} {
+		if _, err := os.Stat(filepath.Join(dest, category, "Account.d.ts")); err != nil {
+			t.Fatal(err)
+		}
 	}
 }
 

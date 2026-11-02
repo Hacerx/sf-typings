@@ -20,7 +20,7 @@ func TestChildDepthRun(t *testing.T) {
 	for _, mode := range []string{"flag", "config", "default", "override", "parent", "shortcut", "queued shortcut", "root", "cycles", "retry", "failure", "retry failure", "boundary union"} {
 		t.Run(mode, func(t *testing.T) {
 			dir := t.TempDir()
-			dest := filepath.Join(dir, "out")
+			dest := filepath.Join(dir, "out", "sobjects")
 			if err := os.MkdirAll(dest, 0700); err != nil {
 				t.Fatal(err)
 			}
@@ -106,7 +106,7 @@ func TestChildDepthRun(t *testing.T) {
 				return auth.Credentials{Token: "test", Instance: "https://sample.my.salesforce.com"}, nil
 			}
 			cfg := filepath.Join(dir, "config.json")
-			raw, _ := json.Marshal(map[string]any{"orgAlias": "dev", "filterRelatedObjects": false, "objects": roots, "out": dest, "allChildren": mode != "flag" && mode != "default", "snapshots": true})
+			raw, _ := json.Marshal(map[string]any{"orgAlias": "dev", "filterRelatedObjects": false, "objects": roots, "out": filepath.Dir(dest), "allChildren": mode != "flag" && mode != "default", "snapshots": true})
 			if err := os.WriteFile(cfg, raw, 0600); err != nil {
 				t.Fatal(err)
 			}
