@@ -9,8 +9,8 @@ S3: "esta debe ser la versión 1.0.0 de la herramienta"
 S4: Distribution choice: "GitHub Release v1.0.0 (recomendado)".
 
 ## Tasks
-T1 | S1-S4 | inline + bounded correction worker | done | Release unit implemented. Six archives, Windows smoke, local install, YAML and corrected full Go suite pass; commit pending T2 closure.
-T2 | S1-S4 | delegated verification | in_progress | Independent source verification completed without new blockers, parent auth spot check passed; close assessment and commit. No remote publication authorized by this task.
+T1 | S1-S4 | inline + bounded correction worker | done | Release unit implemented in `7848d91`. Six archives, Windows smoke, local install, YAML and corrected full Go suite pass.
+T2 | S1-S4 | delegated verification | done | `7848d91`: independent verification, parent spot check and four-lens native review approved and acknowledged. No remote publication performed.
 
 ## Log
 L1: Crea github actions manuales para crear builds de linux, windows y macos, añade en el readme un apartado de install o bien por el binario o bien por go install, esta debe ser la versión 1.0.0 de la herramienta
@@ -21,3 +21,4 @@ L5: Cross-build/package check passed for linux/windows/darwin × amd64/arm64. Ve
 L6: Local isolated GOBIN `go install .` and installed binary -help passed. `go list -m` reports root go=1.23 and authdecrypt/apexfmt/antlr go=1.22. Verifier flagged pre-existing >1MiB environment fixture incompatible with Linux exec; worker scope includes a short-sentinel mock stdout fixture correction so the new Ubuntu test gate can execute meaningfully. Native Linux execution and GitHub publication are not claimed.
 L7: Independent verifier returned no additional change-caused blockers. S1 structurally met (Ubuntu execution unverified), S2/S3 met, S4 met as implementation. Independent bash syntax and whitespace checks passed; mutation probes unavailable after scratch preparation timeout, not retried. Source-derived Linux environment fixture concern is being corrected. Residual verifier scratch `/tmp/gaLZoWni/tmp.p0nmUiKrxP` is outside project and was not inspected or deleted by parent. No extra regression framework added for advisory probes.
 L8: Worker completed fixture corrections, with oversized-output mock RED (17 bytes) then GREEN; focused CLI/auth and full CGO_ENABLED=0 go test ./... passed. Parent independently reran focused auth checks successfully. Initial full-suite failure is resolved. Actual Ubuntu/Go 1.23 execution, native non-Windows execution and GitHub publication remain unexecuted, not claimed as proof.
+L9: Native assessment high (delivery/environment item 5). Four reviewer lenses approved the staged release unit; lineage `review-8fb6e8a4e0e81aab` acknowledged successfully with authority burned. Work-unit commit `7848d91` contains the reviewed candidate (324 authored changed lines). Tasks complete. Next delivery decision: push/merge feature branch, then manually run release workflow on main; those actions were not performed.
