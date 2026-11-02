@@ -16,7 +16,7 @@ import (
 )
 
 const initUsage = "Usage: sf-typings -init-tsconfig [-config config.json] [-out generated]\n"
-const initHelp = "TypeScript setup: run -init-tsconfig from the SFDX project root to create tsconfig.json exclusively (never overwrite files, directories, or symlinks). Includes packageDirectories paths and chosen out declarations. Only -init-tsconfig/-config/-out/-help are accepted. No generation, authentication, installs, or deployment. Install TypeScript and @salesforce/lightning-types yourself: npm install --save-dev typescript @salesforce/lightning-types. Check with npx tsc --noEmit; compile separately before deployment. See examples/sfdx-typescript/README.md. -init-tsconfig is a bootstrap flag, not a JSON option.\n"
+const initHelp = "TypeScript setup: run -init-tsconfig from the SFDX project root to create tsconfig.json or enrich an existing regular JSONC config with chosen out declarations, preserving source selection and comments. Prints Created, Updated, or Unchanged; unsafe/unsupported configs fail without changes. Explicit root include preserves opaque string/array extends; otherwise supports single project-local JSON extends chains with explicit include/files, not package inheritance. No references-only builds. New configs include packageDirectories paths. Never follows target symlinks. Only -init-tsconfig/-config/-out/-help are accepted. No generation, authentication, installs, or deployment. Install TypeScript and @salesforce/lightning-types yourself: npm install --save-dev typescript @salesforce/lightning-types. Check with npx tsc --noEmit; compile separately before deployment. See examples/sfdx-typescript/README.md. -init-tsconfig is a bootstrap flag, not a JSON option.\n"
 
 func TestInitTSConfigChild(t *testing.T) {
 	if os.Getenv("SF_TYPINGS_INIT_CHILD") != "1" {
@@ -155,8 +155,8 @@ func TestInitTSConfig(t *testing.T) {
 			}
 			// Second requests preserve even the exact generated formatting.
 			before = initSnapshot(t, root)
-			out, errs, code = initRun(t, root, "-init-tsconfig")
-			if code != 1 || out != "" || errs != "sf-typings: tsconfig.json already exists\n" || !reflect.DeepEqual(before, initSnapshot(t, root)) {
+			out, errs, code = initRun(t, root, append([]string{"-init-tsconfig"}, tc.flags...)...)
+			if code != 0 || out != "Unchanged tsconfig.json.\n" || errs != "" || !reflect.DeepEqual(before, initSnapshot(t, root)) {
 				t.Fatalf("repeat: exit=%d stdout=%q stderr=%q", code, out, errs)
 			}
 		})
@@ -208,7 +208,7 @@ func TestInitTSConfigRejected(t *testing.T) {
 		{name: "glob", project: `{"packageDirectories":[{"path":"force-*"}]}`, message: "invalid package directory path"},
 		{name: "missing directory", project: `{"packageDirectories":[{"path":"missing"}]}`, message: "invalid package directory path"},
 		{name: "package symlink", target: "package-link", message: "invalid package directory path"},
-		{name: "existing regular", target: "file", message: "tsconfig.json already exists"},
+		{name: "existing regular", target: "file", message: "cannot safely update tsconfig.json (invalid or unsupported config)"},
 		{name: "existing directory", target: "dir", message: "tsconfig.json already exists"},
 		{name: "existing symlink", target: "link", message: "tsconfig.json already exists"},
 		{name: "existing dangling symlink", target: "dangling", message: "tsconfig.json already exists"},

@@ -14,7 +14,7 @@ import (
 )
 
 const tsconfigUsage = "Usage: sf-typings -init-tsconfig [-config config.json] [-out generated]\n"
-const tsconfigHelp = "TypeScript setup: run -init-tsconfig from the SFDX project root to create tsconfig.json exclusively (never overwrite files, directories, or symlinks). Includes packageDirectories paths and chosen out declarations. Only -init-tsconfig/-config/-out/-help are accepted. No generation, authentication, installs, or deployment. Install TypeScript and @salesforce/lightning-types yourself: npm install --save-dev typescript @salesforce/lightning-types. Check with npx tsc --noEmit; compile separately before deployment. See examples/sfdx-typescript/README.md. -init-tsconfig is a bootstrap flag, not a JSON option.\n"
+const tsconfigHelp = "TypeScript setup: run -init-tsconfig from the SFDX project root to create tsconfig.json or enrich an existing regular JSONC config with chosen out declarations, preserving source selection and comments. Prints Created, Updated, or Unchanged; unsafe/unsupported configs fail without changes. Explicit root include preserves opaque string/array extends; otherwise supports single project-local JSON extends chains with explicit include/files, not package inheritance. No references-only builds. New configs include packageDirectories paths. Never follows target symlinks. Only -init-tsconfig/-config/-out/-help are accepted. No generation, authentication, installs, or deployment. Install TypeScript and @salesforce/lightning-types yourself: npm install --save-dev typescript @salesforce/lightning-types. Check with npx tsc --noEmit; compile separately before deployment. See examples/sfdx-typescript/README.md. -init-tsconfig is a bootstrap flag, not a JSON option.\n"
 
 // Bootstrap is deliberately separate from generation: config is validated, but
 // source paths and credentials are never resolved.
@@ -47,14 +47,27 @@ func initTSConfig(flags *flag.FlagSet, configPath, out string, stdout, stderr io
 			out = c.Out
 		}
 	}
+	action := "Created"
 	if err == nil {
-		err = createTSConfig(out)
+		if out == "" {
+			err = fmt.Errorf("invalid output directory")
+		} else if info, inspectErr := os.Lstat("tsconfig.json"); inspectErr == nil {
+			if !info.Mode().IsRegular() {
+				err = fmt.Errorf("tsconfig.json already exists")
+			} else {
+				action, err = updateTSConfig(out)
+			}
+		} else if !os.IsNotExist(inspectErr) {
+			err = fmt.Errorf("cannot inspect tsconfig.json")
+		} else {
+			err = createTSConfig(out)
+		}
 	}
 	if err != nil {
 		fmt.Fprintf(stderr, "sf-typings: %s\n", err)
 		return 1
 	}
-	fmt.Fprint(stdout, "Created tsconfig.json.\n")
+	fmt.Fprintf(stdout, "%s tsconfig.json.\n", action)
 	return 0
 }
 

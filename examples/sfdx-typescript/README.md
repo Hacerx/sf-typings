@@ -21,7 +21,7 @@ The generator must run **with this example as its working directory**: source an
 
 `typecheck` checks the LWC and separate compile-only negative consumers (wrong named arguments, Promise results, map/list values, and Account fields). `build` first requires those checks to pass, then emits adjacent `typedAccount.js`. It does not bundle an OSS app: Salesforce deploys JavaScript, **not TypeScript**. No decorators or custom transpiler are used. Rebuild after each source change; never deploy stale JS. Generated JS, declarations, dependencies, and local org state are ignored by Git; `.forceignore` excludes TypeScript, declarations, and tooling from deployment.
 
-The checked-in `tsconfig.json` matches the CLI initializer's default `force-app`/`sf-typings` seam. To try initialization, use a separate copy without a tsconfig and run the built CLI's `-init-tsconfig`; initialization intentionally never overwrites an existing file.
+The checked-in `tsconfig.json` matches the CLI initializer's default `force-app`/`sf-typings` seam. In a separate copy, `-init-tsconfig` creates a missing config, or surgically enriches an existing regular JSONC config with generated declaration discovery. It prints `Created`, `Updated`, or `Unchanged tsconfig.json.`; repeating the same output selection preserves exact bytes. Existing compiler options, comments, trailing commas and source discovery are retained; no packages are installed. With an explicit root include, package or array `extends` values are preserved opaquely without inherited-config reads. Otherwise, single project-local JSON inheritance with explicit include/files is supported, with origin-relative include rebasing (including SFDX parent-relative globs); package/multiple inheritance and inherited implicit discovery are unsupported. References-only builds and unsafe/malformed targets are rejected without changing the original. See [existing-config safety and boundaries](../../README.md#existing-config-safety-and-supported-inheritance).
 
 ## Offline checks (no org, no Account proof)
 
@@ -61,3 +61,4 @@ The Lightning package's index imports its published ambient modules; `compilerOp
 - Real official declarations load through the agreed `types` setting without a shim.
 - Wrapper-only generation can be checked offline; Account references require catalog/Describe metadata and cannot honestly be replaced by local handwritten types.
 - TypeScript must be compiled before Salesforce validation, with only the resulting JavaScript included in the source package.
+- Adding declaration discovery must retain implicit `**/*`, explicit files, or origin-relative inherited includes; a declaration-only include can otherwise silently drop application sources.
